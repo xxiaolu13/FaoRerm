@@ -35,10 +35,11 @@ export const useServerStore = create<ServerStore>((set) => ({
 
   loadServers: async () => {
     try {
-      const servers = await invoke<Record<string, ServerConfig>>(
-        "get_all_server",
-      );
-      set({ servers });
+      const config = await invoke<FaoConfig>("get_all_config");
+      set({
+        servers: config.server,
+        quickCommands: config.quick_command,
+      });
     } catch (err) {
       console.error("Failed to load servers:", err);
     }

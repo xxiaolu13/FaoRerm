@@ -7,8 +7,7 @@ export function QuickCommands() {
   const quickCommands = useServerStore((s) => s.quickCommands);
   const addQuickCommand = useServerStore((s) => s.addQuickCommand);
   const deleteQuickCommand = useServerStore((s) => s.deleteQuickCommand);
-  const activeTabId = useTerminalStore((s) => s.activeTabId);
-  const tabs = useTerminalStore((s) => s.tabs);
+  const activeSession = useTerminalStore((s) => s.activeSession);
 
   const [newDesc, setNewDesc] = useState("");
   const [newCmd, setNewCmd] = useState("");
@@ -25,22 +24,16 @@ export function QuickCommands() {
   };
 
   const sendCommand = (cmd: string) => {
-    if (!activeTabId) return;
-    const tab = tabs.get(activeTabId);
-    if (!tab || !tab.channelId) return;
+    if (!activeSession) return;
 
     const expanded = cmd.replace(/\\n/g, "\n");
-    const lines = expanded.split("\n");
     const encoder = new TextEncoder();
-
-    lines.forEach((line) => {
-      const data = Array.from(encoder.encode(line + "\r"));
-      invoke("ssh_send_data", {
-        sessionId: tab.sessionId,
-        channelId: tab.channelId,
-        data,
-      }).catch(console.error);
-    });
+    const data = Array.from(encoder.encode(expanded));
+    invoke("ssh_send_data", {
+      sessionId: activeSession.sessionId,
+      channelId: activeSession.channelId,
+      data,
+    }).catch(console.error);
   };
 
   const entries = Object.entries(quickCommands);
@@ -59,8 +52,8 @@ export function QuickCommands() {
           key={desc}
           className="quick-command-item"
           onClick={() => sendCommand(cmd)}
-          disabled={!activeTabId}
-          title={activeTabId ? `Send: ${cmd.replace(/\\n/g, " ↵ ")}` : "No active terminal"}
+          disabled={!activeSession}
+          title={activeSession ? `Send: ${cmd.replace(/\\n/g, " ↵ ")}` : "No active terminal"}
         >
           <div className="quick-command-info">
             <span className="quick-command-desc">{desc}</span>

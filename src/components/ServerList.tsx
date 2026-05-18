@@ -14,12 +14,9 @@ export function ServerList() {
   const showServerModal = useUIStore((s) => s.showServerModal);
   const checkMasterPassword = useServerStore((s) => s.checkMasterPassword);
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
-  const selectedServerId = useUIStore((s) => s.selectedServerId);
-  const setSelectedServerId = useUIStore((s) => s.setSelectedServerId);
   const addTab = useTerminalStore((s) => s.addTab);
   const setChannel = useTerminalStore((s) => s.setChannel);
-  const tabs = useTerminalStore((s) => s.tabs);
-  const tabOrder = useTerminalStore((s) => s.tabOrder);
+  const setActiveSection = useUIStore((s) => s.setActiveSection);
 
   useEffect(() => {
     checkMasterPassword().then(() => {
@@ -30,7 +27,6 @@ export function ServerList() {
   const handleDelete = async (serverId: string) => {
     try {
       await deleteServer(serverId);
-      if (selectedServerId === serverId) setSelectedServerId(null);
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -71,6 +67,8 @@ export function ServerList() {
         channelId: "",
         status: "connecting",
       });
+
+      setActiveSection("servers");
 
       toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
     } catch (err) {
@@ -113,81 +111,61 @@ export function ServerList() {
       )}
 
       <div className="server-items">
-        {serverEntries.map(([id, server]) => {
-          const isActive = tabOrder.some((tid) => {
-            const t = tabs.get(tid);
-            return t?.serverId === id && (t.status === "connected" || t.status === "connecting");
-          });
-
-          return (
-            <div
-              key={id}
-              className={`server-item ${selectedServerId === id ? "server-item--selected" : ""}`}
+        {serverEntries.map(([id, server]) => (
+          <div key={id} className="server-item">
+            <button
+              className="server-connect"
+              onClick={() => handleConnect(id)}
+              disabled={!masterPasswordSet}
+              title={`Connect to ${server.host}`}
             >
-              <button
-                className="server-connect"
-                onClick={() => setSelectedServerId(id)}
-                title={`View ${server.host}`}
-              >
-                <span className={`server-icon ${isActive ? "server-icon--active" : ""}`}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <rect x="2" y="3" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                    <rect x="2" y="8" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  </svg>
+              <span className="server-icon">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="2" y="3" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="2" y="8" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              </span>
+              <div className="server-info">
+                <span className="server-name">{id}</span>
+                <span className="server-detail">
+                  {server.user}@{server.host}:{server.port}
                 </span>
-                <div className="server-info">
-                  <span className="server-name">{id}</span>
-                  <span className="server-detail">
-                    {server.user}@{server.host}:{server.port}
-                  </span>
-                </div>
-              </button>
+              </div>
+            </button>
 
-              <button
-                className="btn-icon btn-icon--sm server-connect-btn"
-                onClick={() => handleConnect(id)}
-                disabled={!masterPasswordSet || isActive}
-                title={isActive ? "Already connected" : "Connect"}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 2L12 7L2 12V2Z" fill="currentColor" />
-                </svg>
-              </button>
+            <button
+              className="btn-icon btn-icon--sm"
+              onClick={() => showServerModal("edit", server)}
+              title="Edit server"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path
+                  d="M10.5 1.5L12.5 3.5L4.5 11.5L1.5 12.5L2.5 9.5L10.5 1.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
 
-              <button
-                className="btn-icon btn-icon--sm"
-                onClick={() => showServerModal("edit", server)}
-                title="Edit server"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path
-                    d="M10.5 1.5L12.5 3.5L4.5 11.5L1.5 12.5L2.5 9.5L10.5 1.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-
-              <button
-                className="btn-icon btn-icon--sm btn-icon--danger"
-                onClick={() => handleDelete(id)}
-                title="Delete server"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path
-                    d="M3 4.5H11M5.5 4.5V3C5.5 2.724 5.724 2.5 6 2.5H8C8.276 2.5 8.5 2.724 8.5 3V4.5M6 7V10.5M8 7V10.5M2.5 4.5L3.5 11.5H10.5L11.5 4.5"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          );
-        })}
+            <button
+              className="btn-icon btn-icon--sm btn-icon--danger"
+              onClick={() => handleDelete(id)}
+              title="Delete server"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path
+                  d="M3 4.5H11M5.5 4.5V3C5.5 2.724 5.724 2.5 6 2.5H8C8.276 2.5 8.5 2.724 8.5 3V4.5M6 7V10.5M8 7V10.5M2.5 4.5L3.5 11.5H10.5L11.5 4.5"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

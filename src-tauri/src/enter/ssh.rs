@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tracing::*;
 use uuid::Uuid;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::{AppHandle, Emitter};
@@ -18,42 +19,47 @@ pub struct ChannelOutput {
 }
 
 #[derive(Clone, Serialize)]
-pub struct HostKeyUnknownPayload {
+pub struct SshEvent {
     pub session_id: String,
-    pub key_type: String,
-    pub fingerprint: String,
+    pub channel_id: Option<String>,
+    pub kind: SshEventKind,
 }
 
 #[derive(Clone, Serialize)]
-pub struct KeyBoardAuthPayload {
-    pub session_id: String,
-    pub prompt: String,
+#[serde(tag = "type")]
+pub enum SshEventKind {
+    #[serde(rename = "state")]
+    State { state: String },
+    #[serde(rename = "error")]
+    Error { error: String },
+    #[serde(rename = "session_dropped")]
+    SessionDropped,
+    #[serde(rename = "host_key_unknown")]
+    HostKeyUnknown { key_type: String, fingerprint: String },
+    #[serde(rename = "host_key_received")]
+    HostKeyReceived { key_type: String, fingerprint: String },
+    #[serde(rename = "keyboard_auth")]
+    KeyboardAuth { prompt: String },
+    #[serde(rename = "channel_success")]
+    ChannelSuccess,
+    #[serde(rename = "channel_close")]
+    ChannelClose,
+    #[serde(rename = "channel_eof")]
+    ChannelEof,
+    #[serde(rename = "channel_failure")]
+    ChannelFailure,
+    #[serde(rename = "exit_status")]
+    ExitStatus { exit_status: u32 },
+    #[serde(rename = "exit_signal")]
+    ExitSignal { signal_name: String, core_dumped: bool, error_message: String, lang_tag: String },
 }
 
-#[derive(Clone, Serialize)]
-pub struct SshStatePayload {
-    pub session_id: String,
-    pub state: String,
-}
-
-#[derive(Clone, Serialize)]
-pub struct SshErrorPayload {
-    pub session_id: String,
-    pub error: String,
-}
-
-#[derive(Clone, Serialize)]
-pub struct SshChannelPayload {
-    pub session_id: String,
-    pub channel_id: String,
-    pub event_type: String,
-}
-
-#[derive(Clone, Serialize)]
-pub struct SshExitStatusPayload {
-    pub session_id: String,
-    pub channel_id: String,
-    pub exit_status: u32,
+fn emit(app: &AppHandle, session_id: &str, channel_id: Option<&str>, kind: SshEventKind) {
+    let _ = app.emit("ssh:event", &SshEvent {
+        session_id: session_id.to_string(),
+        channel_id: channel_id.map(|s| s.to_string()),
+        kind,
+    });
 }
 
 fn spawn_event_forwarder(
@@ -68,31 +74,23 @@ fn spawn_event_forwarder(
         while let Some(event) = event_rx.recv().await {
             match event {
                 FRCEvent::HostKeyReceived(key) => {
-                    let payload = HostKeyUnknownPayload {
-                        session_id: sid.clone(),
+                    emit(&app_handle, &sid, None, SshEventKind::HostKeyReceived {
                         key_type: key.algorithm().as_str().to_string(),
                         fingerprint: key.public_key_base64(),
-                    };
-                    let _ = app_handle.emit("ssh:host-key-received", &payload);
+                    });
                 }
                 FRCEvent::HostKeyUnknown(key, tx) => {
                     let mut guard = auth_state.lock().await;
                     guard.pending_host_key = Some(tx);
-                    let payload = HostKeyUnknownPayload {
-                        session_id: sid.clone(),
+                    emit(&app_handle, &sid, None, SshEventKind::HostKeyUnknown {
                         key_type: key.algorithm().as_str().to_string(),
                         fingerprint: key.public_key_base64(),
-                    };
-                    let _ = app_handle.emit("ssh:host-key-unknown", &payload);
+                    });
                 }
                 FRCEvent::KeyBoardAuth(prompt, tx) => {
                     let mut guard = auth_state.lock().await;
                     guard.pending_keyboard_auth = Some(tx);
-                    let payload = KeyBoardAuthPayload {
-                        session_id: sid.clone(),
-                        prompt,
-                    };
-                    let _ = app_handle.emit("ssh:keyboard-auth", &payload);
+                    emit(&app_handle, &sid, None, SshEventKind::KeyboardAuth { prompt });
                 }
                 FRCEvent::Output(channel_id, data) => {
                     let _ = output_channel.send(ChannelOutput {
@@ -107,66 +105,53 @@ fn spawn_event_forwarder(
                         FRCState::Connected => "Connected",
                         FRCState::Disconnected => "Disconnected",
                     };
-                    let payload = SshStatePayload {
-                        session_id: sid.clone(),
+                    emit(&app_handle, &sid, None, SshEventKind::State {
                         state: state_str.to_string(),
-                    };
-                    let _ = app_handle.emit("ssh:state", &payload);
+                    });
                 }
                 FRCEvent::Error(err) => {
-                    let payload = SshErrorPayload {
-                        session_id: sid.clone(),
+                    emit(&app_handle, &sid, None, SshEventKind::Error {
                         error: format!("{}", err),
-                    };
-                    let _ = app_handle.emit("ssh:error", &payload);
+                    });
                 }
                 FRCEvent::Success(channel_id) => {
-                    let payload = SshChannelPayload {
-                        session_id: sid.clone(),
-                        channel_id: channel_id.to_string(),
-                        event_type: "Success".to_string(),
-                    };
-                    let _ = app_handle.emit("ssh:channel-event", &payload);
+                    let ch_str = channel_id.to_string();
+                    {
+                        let services = crate::FAO_SERVICES.lock().await;
+                        let handles_guard = services.handles.lock().await;
+                        if let Some(h) = handles_guard.get(&sid) {
+                            h.channels.lock().await.insert(ch_str.clone());
+                        };
+                    }
+                    emit(&app_handle, &sid, Some(&ch_str), SshEventKind::ChannelSuccess);
                 }
                 FRCEvent::Eof(channel_id) => {
-                    let payload = SshChannelPayload {
-                        session_id: sid.clone(),
-                        channel_id: channel_id.to_string(),
-                        event_type: "Eof".to_string(),
-                    };
-                    let _ = app_handle.emit("ssh:channel-event", &payload);
+                    emit(&app_handle, &sid, Some(&channel_id.to_string()), SshEventKind::ChannelEof);
                 }
                 FRCEvent::Close(channel_id) => {
-                    let payload = SshChannelPayload {
-                        session_id: sid.clone(),
-                        channel_id: channel_id.to_string(),
-                        event_type: "Close".to_string(),
-                    };
-                    let _ = app_handle.emit("ssh:channel-event", &payload);
+                    let ch_str = channel_id.to_string();
+                    {
+                        let services = crate::FAO_SERVICES.lock().await;
+                        let handles_guard = services.handles.lock().await;
+                        if let Some(h) = handles_guard.get(&sid) {
+                            h.channels.lock().await.remove(&ch_str);
+                        };
+                    }
+                    emit(&app_handle, &sid, Some(&ch_str), SshEventKind::ChannelClose);
                 }
                 FRCEvent::ExitStatus(channel_id, exit_status) => {
-                    let payload = SshExitStatusPayload {
-                        session_id: sid.clone(),
-                        channel_id: channel_id.to_string(),
-                        exit_status,
-                    };
-                    let _ = app_handle.emit("ssh:exit-status", &payload);
+                    emit(&app_handle, &sid, Some(&channel_id.to_string()), SshEventKind::ExitStatus { exit_status });
                 }
                 FRCEvent::ExitSignal { channel, signal_name, core_dumped, error_message, lang_tag } => {
-                    let payload = SshChannelPayload {
-                        session_id: sid.clone(),
-                        channel_id: channel.to_string(),
-                        event_type: format!("ExitSignal({:?},{},{},{})", signal_name, core_dumped, error_message, lang_tag),
-                    };
-                    let _ = app_handle.emit("ssh:channel-event", &payload);
+                    emit(&app_handle, &sid, Some(&channel.to_string()), SshEventKind::ExitSignal {
+                        signal_name: format!("{:?}", signal_name),
+                        core_dumped,
+                        error_message,
+                        lang_tag,
+                    });
                 }
                 FRCEvent::ChannelFailure(channel_id) => {
-                    let payload = SshChannelPayload {
-                        session_id: sid.clone(),
-                        channel_id: channel_id.to_string(),
-                        event_type: "ChannelFailure".to_string(),
-                    };
-                    let _ = app_handle.emit("ssh:channel-event", &payload);
+                    emit(&app_handle, &sid, Some(&channel_id.to_string()), SshEventKind::ChannelFailure);
                 }
                 FRCEvent::ExtendedData { channel, data, ext: _ } => {
                     let _ = output_channel.send(ChannelOutput {
@@ -175,11 +160,9 @@ fn spawn_event_forwarder(
                     });
                 }
                 FRCEvent::ConnectionError(err) => {
-                    let payload = SshErrorPayload {
-                        session_id: sid.clone(),
+                    emit(&app_handle, &sid, None, SshEventKind::Error {
                         error: format!("{}", err),
-                    };
-                    let _ = app_handle.emit("ssh:error", &payload);
+                    });
                 }
                 FRCEvent::Done => {
                     info!(session_id = %sid, "Session done, cleaning up");
@@ -188,6 +171,8 @@ fn spawn_event_forwarder(
                 _ => {}
             }
         }
+
+        emit(&app_handle, &sid, None, SshEventKind::SessionDropped);
 
         let services = crate::FAO_SERVICES.lock().await;
         services.handles.lock().await.remove(&sid);
@@ -263,6 +248,7 @@ pub async fn ssh_connect(
         handles_guard.insert(sid_str.clone(), SessionHandles {
             command_tx: command_tx.clone(),
             abort_tx: abort_tx.clone(),
+            channels: Arc::new(Mutex::new(HashSet::new())),
         });
     }
     {
@@ -290,6 +276,38 @@ pub async fn ssh_disconnect(session_id: String) -> Result<(), String> {
         let _ = session.command_tx.send((FRCCommand::Disconnect, None));
         info!(session_id = %session_id, "Disconnect command sent");
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ssh_close_channel(
+    session_id: String,
+    channel_id: String,
+) -> Result<(), String> {
+    let services = crate::FAO_SERVICES.lock().await;
+    let handles_guard = services.handles.clone();
+    let guard = handles_guard.lock().await;
+
+    let session = guard.get(&session_id)
+        .ok_or(format!("Session '{}' not found", session_id))?;
+
+    let ch_id = Uuid::parse_str(&channel_id)
+        .map_err(|e| format!("Invalid channel_id: {}", e))?;
+
+    session.command_tx.send((FRCCommand::Channel(ch_id, ChannelOperation::Close), None))
+        .map_err(|_| "Failed to send close channel command")?;
+
+    session.channels.lock().await.remove(&channel_id);
+
+    let remaining = session.channels.lock().await.len();
+    if remaining == 0 {
+        session.command_tx.send((FRCCommand::Disconnect, None))
+            .map_err(|_| "Failed to send disconnect command")?;
+        info!(session_id = %session_id, "Last channel closed, disconnecting session");
+    } else {
+        info!(session_id = %session_id, channel_id = %channel_id, remaining, "Channel closed");
+    }
+
     Ok(())
 }
 

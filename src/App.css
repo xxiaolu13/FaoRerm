@@ -1,16 +1,17 @@
 :root {
-  --bg-primary: #1e1e2e;
-  --bg-secondary: #181825;
-  --bg-surface: #313244;
-  --bg-surface-hover: #45475a;
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #161616;
+  --bg-surface: #2a2a2a;
+  --bg-surface-hover: #3a3a3a;
+  --bg-base: #1e1e1e;
   --bg-overlay: rgba(0, 0, 0, 0.6);
 
-  --text-primary: #cdd6f4;
-  --text-secondary: #a6adc8;
-  --text-muted: #6c7086;
+  --text-primary: #d4d4d4;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
 
-  --border: #45475a;
-  --border-light: #585b70;
+  --border: #3a3a3a;
+  --border-light: #4a4a4a;
 
   --accent: #89b4fa;
   --accent-hover: #74c7ec;
@@ -65,6 +66,7 @@ body {
   display: flex;
   height: 100%;
   width: 100%;
+  position: relative;
 }
 
 .activity-bar {
@@ -208,6 +210,7 @@ body {
   flex-direction: column;
   min-width: 0;
   height: 100%;
+  position: relative;
 }
 
 .tab-bar {
@@ -327,6 +330,25 @@ body {
   flex: 1;
   min-height: 0;
   position: relative;
+  overflow: hidden;
+}
+
+.terminal-area-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--bg-base);
+  overflow-y: auto;
+}
+
+.terminal-container {
+  width: 100%;
+  height: 100%;
+  padding: 8px 4px 4px 8px;
+}
+
+.terminal-container .xterm {
+  height: 100%;
 }
 
 .terminal-area--empty {
@@ -334,6 +356,17 @@ body {
   align-items: center;
   justify-content: center;
   overflow-y: auto;
+}
+
+.terminal-area > .dashboard {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  z-index: 5;
+  background: var(--bg-base);
 }
 
 .tab-modal-overlay {
@@ -350,7 +383,7 @@ body {
 .terminal-status-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(30, 30, 46, 0.92);
+  background: rgba(30, 30, 30, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -406,6 +439,7 @@ body {
   padding: 48px 32px;
   max-width: 600px;
   width: 100%;
+  margin: auto;
 }
 
 .dashboard-hero {
@@ -417,8 +451,9 @@ body {
 }
 
 .dashboard-logo {
-  color: var(--accent);
-  opacity: 0.7;
+  width: 48px;
+  height: 48px;
+  opacity: 0.85;
 }
 
 .dashboard-title {
@@ -552,13 +587,20 @@ body {
   color: var(--text-muted);
 }
 
+.right-drawer-wrapper {
+  display: flex;
+  height: 100%;
+  flex-shrink: 0;
+  position: relative;
+}
+
 .right-drawer-toggle {
   position: fixed;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   z-index: 100;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -573,7 +615,7 @@ body {
 .right-drawer-toggle:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
 }
 
 .right-drawer {
@@ -582,11 +624,10 @@ body {
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
   overflow: hidden;
-  transition: width 0.2s ease;
-  flex-shrink: 0;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.right-drawer--open {
+.right-drawer-wrapper--open .right-drawer {
   width: var(--right-drawer-width);
   min-width: var(--right-drawer-width);
 }
@@ -594,11 +635,16 @@ body {
 .right-drawer-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   height: 36px;
   white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease 0.1s;
+}
+
+.right-drawer-wrapper--open .right-drawer-header {
+  opacity: 1;
 }
 
 .right-drawer-tabs {
@@ -637,6 +683,12 @@ body {
   padding: 8px 0;
   overflow-y: auto;
   height: calc(100% - 37px);
+  opacity: 0;
+  transition: opacity 0.2s ease 0.15s;
+}
+
+.right-drawer-wrapper--open .right-drawer-content {
+  opacity: 1;
 }
 
 .right-drawer-section {
@@ -690,7 +742,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(30, 30, 46, 0.85);
+  background: rgba(30, 30, 30, 0.85);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   animation: fadeIn 0.2s ease;
@@ -1008,6 +1060,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .mgmt-page-header {

@@ -8,7 +8,7 @@ const DEFAULT_SERVER: Partial<ServerConfig> = {
   port: 22,
   user: "root",
   method: "password",
-  secret: "",
+  password: "",
   allow_insecure_algos: false,
   enabled: false,
   contains: [],
@@ -56,7 +56,7 @@ export function ServerModal() {
     setSaving(true);
     setError(null);
     try {
-      await addServer(serverKey.trim(), form as ServerConfig);
+      await addServer(serverKey.trim(), { ...form, id: serverKey.trim() } as ServerConfig);
       hideServerModal();
     } catch (err) {
       setError(String(err));
@@ -70,7 +70,7 @@ export function ServerModal() {
   };
 
   return (
-    <div className="modal-overlay" onClick={hideServerModal}>
+    <div className="modal-overlay">
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">
@@ -167,8 +167,8 @@ export function ServerModal() {
                     ? "Enter password"
                     : "/home/user/.ssh/id_ed25519"
                 }
-                value={form.secret || ""}
-                onChange={(e) => update("secret", e.target.value)}
+                value={form.password || ""}
+                onChange={(e) => update("password", e.target.value)}
               />
             </div>
           </div>

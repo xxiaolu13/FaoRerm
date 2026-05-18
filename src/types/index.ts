@@ -6,7 +6,7 @@ export interface ServerConfig {
   enabled: boolean;
   contains: string[];
   method: "password" | "key";
-  secret?: string;
+  password?: string;
   allow_insecure_algos: boolean;
   inactivity_timeout?: number;
   keepalive_interval?: number;
@@ -48,41 +48,22 @@ export interface ChannelOutput {
   data: number[];
 }
 
-export interface HostKeyUnknownEvent {
+export interface SshEvent {
   session_id: string;
-  key_type: string;
-  fingerprint: string;
+  channel_id: string | null;
+  kind: SshEventKind;
 }
 
-export interface KeyBoardAuthEvent {
-  session_id: string;
-  prompt: string;
-}
-
-export interface SshOutputEvent {
-  session_id: string;
-  channel_id: string;
-  data: number[];
-}
-
-export interface SshStateEvent {
-  session_id: string;
-  state: string;
-}
-
-export interface SshErrorEvent {
-  session_id: string;
-  error: string;
-}
-
-export interface SshChannelEvent {
-  session_id: string;
-  channel_id: string;
-  event_type: string;
-}
-
-export interface SshExitStatusEvent {
-  session_id: string;
-  channel_id: string;
-  exit_status: number;
-}
+export type SshEventKind =
+  | { type: "state"; state: string }
+  | { type: "error"; error: string }
+  | { type: "session_dropped" }
+  | { type: "host_key_unknown"; key_type: string; fingerprint: string }
+  | { type: "host_key_received"; key_type: string; fingerprint: string }
+  | { type: "keyboard_auth"; prompt: string }
+  | { type: "channel_success" }
+  | { type: "channel_close" }
+  | { type: "channel_eof" }
+  | { type: "channel_failure" }
+  | { type: "exit_status"; exit_status: number }
+  | { type: "exit_signal"; signal_name: string; core_dumped: boolean; error_message: string; lang_tag: string };

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useTerminalStore } from "./terminalStore";
 import type { ServerConfig } from "../types";
 
 interface UIStore {
@@ -121,6 +122,7 @@ export const useUIStore = create<UIStore>((set) => ({
           sidebarCollapsed: isSameSection ? !state.sidebarCollapsed : false,
         };
       }
+      useTerminalStore.getState().setActiveTab(null);
       return { activeSection: section };
     }),
   setManagementTab: (tab) => set({ managementTab: tab }),

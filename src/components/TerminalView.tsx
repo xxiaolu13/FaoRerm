@@ -38,28 +38,28 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
       fontSize: 14,
       fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
       theme: {
-        background: "#1e1e2e",
-        foreground: "#cdd6f4",
+        background: "#1e1e1e",
+        foreground: "#d4d4d4",
         cursor: "#f5e0dc",
-        cursorAccent: "#1e1e2e",
-        selectionBackground: "#585b70",
-        selectionForeground: "#cdd6f4",
-        black: "#45475a",
+        cursorAccent: "#1e1e1e",
+        selectionBackground: "#3a3a3a",
+        selectionForeground: "#d4d4d4",
+        black: "#3a3a3a",
         red: "#f38ba8",
         green: "#a6e3a1",
         yellow: "#f9e2af",
         blue: "#89b4fa",
         magenta: "#f5c2e7",
         cyan: "#94e2d5",
-        white: "#bac2de",
-        brightBlack: "#585b70",
+        white: "#d4d4d4",
+        brightBlack: "#4a4a4a",
         brightRed: "#f38ba8",
         brightGreen: "#a6e3a1",
         brightYellow: "#f9e2af",
         brightBlue: "#89b4fa",
         brightMagenta: "#f5c2e7",
         brightCyan: "#94e2d5",
-        brightWhite: "#a6adc8",
+        brightWhite: "#a0a0a0",
       },
       allowProposedApi: true,
       scrollback: 10000,
@@ -76,7 +76,9 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
 
     if (containerRef.current) {
       term.open(containerRef.current);
-      fitAddon.fit();
+      requestAnimationFrame(() => {
+        fitAddon.fit();
+      });
     }
 
     terminalManager.register(tabId, term);
@@ -113,7 +115,11 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
     });
 
     const observer = new ResizeObserver(() => {
-      fitAddon.fit();
+      if (!containerRef.current || !fitAddonRef.current) return;
+      if (containerRef.current.offsetParent === null) return;
+      try {
+        fitAddonRef.current.fit();
+      } catch {}
       const chId = channelIdRef.current;
       if (termRef.current && chId) {
         invoke("ssh_resize_pty", {
@@ -145,9 +151,15 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
   }, [tabId, channelId]);
 
   useEffect(() => {
-    if (active && fitAddonRef.current && containerRef.current) {
-      const timer = setTimeout(() => {
-        fitAddonRef.current?.fit();
+    if (!active) return;
+
+    const timers = [
+      setTimeout(() => {
+        if (!fitAddonRef.current || !containerRef.current) return;
+        if (containerRef.current.offsetParent === null) return;
+        try {
+          fitAddonRef.current.fit();
+        } catch {}
         if (termRef.current && channelIdRef.current) {
           invoke("ssh_resize_pty", {
             sessionId,
@@ -156,9 +168,25 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
             rows: termRef.current.rows,
           }).catch(console.error);
         }
-      }, 50);
-      return () => clearTimeout(timer);
-    }
+      }, 30),
+      setTimeout(() => {
+        if (!fitAddonRef.current || !containerRef.current) return;
+        if (containerRef.current.offsetParent === null) return;
+        try {
+          fitAddonRef.current.fit();
+        } catch {}
+        if (termRef.current && channelIdRef.current) {
+          invoke("ssh_resize_pty", {
+            sessionId,
+            channelId: channelIdRef.current,
+            cols: termRef.current.cols,
+            rows: termRef.current.rows,
+          }).catch(console.error);
+        }
+      }, 150),
+    ];
+
+    return () => timers.forEach(clearTimeout);
   }, [active, sessionId]);
 
   const isHostKeyTarget = hostKeyModal?.sessionId === sessionId;
@@ -169,13 +197,12 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
   return (
     <div
       style={{
-        width: "100%",
-        height: "100%",
-        display: active ? "block" : "none",
-        position: "relative",
+        position: "absolute",
+        inset: 0,
+        display: active ? "flex" : "none",
       }}
     >
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div className="terminal-container" ref={containerRef} />
 
       {showStatusOverlay && !isHostKeyTarget && !isKeyboardAuthTarget && (
         <div className="terminal-status-overlay">
@@ -248,7 +275,12 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
               <button className="btn btn--danger" onClick={async () => {
                 try {
                   await invoke("ssh_confirm_host_key", { sessionId: hostKeyModal.sessionId, accepted: false });
-                  await invoke("ssh_disconnect", { sessionId: hostKeyModal.sessionId });
+                  const t = useTerminalStore.getState().tabs.get(tabId);
+                  if (t?.channelId) {
+                    await invoke("ssh_close_channel", { sessionId: hostKeyModal.sessionId, channelId: t.channelId });
+                  } else {
+                    await invoke("ssh_disconnect", { sessionId: hostKeyModal.sessionId });
+                  }
                 } catch {}
                 removeTab(tabId);
                 hideHostKeyModal();
@@ -275,7 +307,12 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
           sessionId={keyboardAuthModal.sessionId}
           prompt={keyboardAuthModal.prompt}
           onCancel={() => {
-            invoke("ssh_disconnect", { sessionId: keyboardAuthModal.sessionId }).catch(() => {});
+            const t = useTerminalStore.getState().tabs.get(tabId);
+            if (t?.channelId) {
+              invoke("ssh_close_channel", { sessionId: keyboardAuthModal.sessionId, channelId: t.channelId }).catch(() => {});
+            } else {
+              invoke("ssh_disconnect", { sessionId: keyboardAuthModal.sessionId }).catch(() => {});
+            }
             removeTab(tabId);
             hideKeyboardAuthModal();
           }}

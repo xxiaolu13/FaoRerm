@@ -41,6 +41,7 @@ pub fn run() {
             // SSH
             ssh_connect,
             ssh_disconnect,
+            ssh_close_channel,
             ssh_open_shell,
             ssh_send_data,
             ssh_resize_pty,

@@ -3,15 +3,21 @@ import type { TabState, TabStatus } from "../types";
 import type { Channel } from "@tauri-apps/api/core";
 import type { ChannelOutput } from "../types";
 
+export interface ActiveSession {
+  sessionId: string;
+  channelId: string;
+}
+
 interface TerminalStore {
   tabs: Map<string, TabState>;
   activeTabId: string | null;
+  activeSession: ActiveSession | null;
   tabOrder: string[];
   channels: Map<string, Channel<ChannelOutput>>;
 
   addTab: (tab: TabState) => void;
   removeTab: (tabId: string) => void;
-  setActiveTab: (tabId: string) => void;
+  setActiveTab: (tabId: string | null) => void;
   updateTabStatus: (tabId: string, status: TabStatus) => void;
   updateTabChannelId: (tabId: string, channelId: string) => void;
   setChannel: (sessionId: string, channel: Channel<ChannelOutput>) => void;
@@ -19,9 +25,17 @@ interface TerminalStore {
   updateTabStatusByChannelId: (channelId: string, status: TabStatus) => void;
 }
 
+function computeActiveSession(tabs: Map<string, TabState>, activeTabId: string | null): ActiveSession | null {
+  if (!activeTabId) return null;
+  const tab = tabs.get(activeTabId);
+  if (!tab || !tab.channelId) return null;
+  return { sessionId: tab.sessionId, channelId: tab.channelId };
+}
+
 export const useTerminalStore = create<TerminalStore>((set, get) => ({
   tabs: new Map(),
   activeTabId: null,
+  activeSession: null,
   tabOrder: [],
   channels: new Map(),
 
@@ -33,6 +47,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       return {
         tabs: newTabs,
         activeTabId: tab.tabId,
+        activeSession: computeActiveSession(newTabs, tab.tabId),
         tabOrder: newOrder,
       };
     }),
@@ -64,11 +79,16 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
         tabs: newTabs,
         tabOrder: newOrder,
         activeTabId: newActive,
+        activeSession: computeActiveSession(newTabs, newActive),
         channels: newChannels,
       };
     }),
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) =>
+    set((state) => ({
+      activeTabId: tabId,
+      activeSession: computeActiveSession(state.tabs, tabId),
+    })),
 
   updateTabStatus: (tabId, status) =>
     set((state) => {
@@ -85,7 +105,8 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       if (!tab) return state;
       const newTabs = new Map(state.tabs);
       newTabs.set(tabId, { ...tab, channelId });
-      return { tabs: newTabs };
+      const newActiveSession = computeActiveSession(newTabs, state.activeTabId);
+      return { tabs: newTabs, activeSession: newActiveSession };
     }),
 
   setChannel: (sessionId, channel) =>

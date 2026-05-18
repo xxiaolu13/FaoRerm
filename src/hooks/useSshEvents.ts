@@ -5,20 +5,13 @@ import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
 import { terminalManager } from "../terminal/terminalManager";
-import type {
-  HostKeyUnknownEvent,
-  KeyBoardAuthEvent,
-  SshStateEvent,
-  SshErrorEvent,
-  SshChannelEvent,
-  SshExitStatusEvent,
-  TabStatus,
-} from "../types";
+import type { SshEvent, TabStatus } from "../types";
 
 export function useSshEvents() {
   const updateTabStatus = useTerminalStore((s) => s.updateTabStatus);
   const updateTabChannelId = useTerminalStore((s) => s.updateTabChannelId);
   const updateTabStatusByChannelId = useTerminalStore((s) => s.updateTabStatusByChannelId);
+  const removeTab = useTerminalStore((s) => s.removeTab);
   const showHostKeyModal = useUIStore((s) => s.showHostKeyModal);
   const showKeyboardAuthModal = useUIStore((s) => s.showKeyboardAuthModal);
 
@@ -26,6 +19,7 @@ export function useSshEvents() {
     updateTabStatus,
     updateTabChannelId,
     updateTabStatusByChannelId,
+    removeTab,
     showHostKeyModal,
     showKeyboardAuthModal,
   });
@@ -33,6 +27,7 @@ export function useSshEvents() {
     updateTabStatus,
     updateTabChannelId,
     updateTabStatusByChannelId,
+    removeTab,
     showHostKeyModal,
     showKeyboardAuthModal,
   };
@@ -42,118 +37,149 @@ export function useSshEvents() {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
-      const fn2 = await listen<HostKeyUnknownEvent>("ssh:host-key-unknown", (event) => {
-        const { session_id, key_type, fingerprint } = event.payload;
-        callbacksRef.current.showHostKeyModal(session_id, key_type, fingerprint);
-      });
-      if (cancelled) { fn2(); return; }
-      unlisteners.push(fn2);
+      const fn = await listen<SshEvent>("ssh:event", (event) => {
+        const { session_id, channel_id, kind } = event.payload;
+        const cb = callbacksRef.current;
 
-      const fn3 = await listen<HostKeyUnknownEvent>("ssh:host-key-received", (event) => {
-        console.log("Host key received:", event.payload.fingerprint);
-      });
-      if (cancelled) { fn3(); return; }
-      unlisteners.push(fn3);
+        switch (kind.type) {
+          case "state": {
+            if (kind.state === "Connected") {
+              const store = useTerminalStore.getState();
+              const sessionTabs = store.getTabsBySessionId(session_id);
+              const connectingTab = sessionTabs.find((t) => t.status === "connecting");
 
-      const fn4 = await listen<KeyBoardAuthEvent>("ssh:keyboard-auth", (event) => {
-        const { session_id, prompt } = event.payload;
-        callbacksRef.current.showKeyboardAuthModal(session_id, prompt);
-      });
-      if (cancelled) { fn4(); return; }
-      unlisteners.push(fn4);
+              if (connectingTab) {
+                const chId = crypto.randomUUID();
+                cb.updateTabChannelId(connectingTab.tabId, chId);
+                cb.updateTabStatus(connectingTab.tabId, "connected" as TabStatus);
+                terminalManager.setChannelId(connectingTab.tabId, chId);
 
-      const fn5 = await listen<SshStateEvent>("ssh:state", (event) => {
-        const { session_id, state } = event.payload;
+                const term = terminalManager.getTerminal(connectingTab.tabId);
+                const cols = term?.cols ?? 80;
+                const rows = term?.rows ?? 24;
 
-        if (state === "Connected") {
-          const store = useTerminalStore.getState();
-          const sessionTabs = store.getTabsBySessionId(session_id);
-          const connectingTab = sessionTabs.find((t) => t.status === "connecting");
+                invoke("ssh_open_shell", {
+                  sessionId: session_id,
+                  channelId: chId,
+                  cols,
+                  rows,
+                }).catch((err) => {
+                  console.error("Failed to open shell:", err);
+                  cb.updateTabStatus(connectingTab.tabId, "error");
+                  toast("Shell open failed", { description: String(err), variant: "error" });
+                });
 
-          if (connectingTab) {
-            const channelId = crypto.randomUUID();
-            callbacksRef.current.updateTabChannelId(connectingTab.tabId, channelId);
-            callbacksRef.current.updateTabStatus(connectingTab.tabId, "connected" as TabStatus);
-            terminalManager.setChannelId(connectingTab.tabId, channelId);
-
-            invoke("ssh_open_shell", {
-              sessionId: session_id,
-              channelId,
-              cols: 80,
-              rows: 24,
-            }).catch((err) => {
-              console.error("Failed to open shell:", err);
-              callbacksRef.current.updateTabStatus(connectingTab.tabId, "error");
-              toast("Shell open failed", { description: String(err), variant: "error" });
-            });
-
-            toast("Connected", { description: `Session established`, variant: "success" });
-          }
-        } else if (state === "Disconnected") {
-          const store = useTerminalStore.getState();
-          const sessionTabs = store.getTabsBySessionId(session_id);
-          for (const tab of sessionTabs) {
-            callbacksRef.current.updateTabStatus(tab.tabId, "disconnected");
-          }
-          toast("Disconnected", { description: `Session closed`, variant: "warning" });
-        } else if (state === "Connecting") {
-          const store = useTerminalStore.getState();
-          const sessionTabs = store.getTabsBySessionId(session_id);
-          for (const tab of sessionTabs) {
-            if (tab.status === "connecting") {
-              callbacksRef.current.updateTabStatus(tab.tabId, "connecting");
+                toast("Connected", { description: "Session established", variant: "success" });
+              }
+            } else if (kind.state === "Disconnected") {
+              const store = useTerminalStore.getState();
+              const sessionTabs = store.getTabsBySessionId(session_id);
+              for (const tab of sessionTabs) {
+                cb.updateTabStatus(tab.tabId, "disconnected");
+              }
+              toast("Disconnected", { description: "Session closed", variant: "warning" });
+            } else if (kind.state === "Connecting") {
+              const store = useTerminalStore.getState();
+              const sessionTabs = store.getTabsBySessionId(session_id);
+              for (const tab of sessionTabs) {
+                if (tab.status === "connecting") {
+                  cb.updateTabStatus(tab.tabId, "connecting");
+                }
+              }
             }
+            break;
+          }
+
+          case "error": {
+            const store = useTerminalStore.getState();
+            const sessionTabs = store.getTabsBySessionId(session_id);
+            for (const tab of sessionTabs) {
+              cb.updateTabStatus(tab.tabId, "error");
+            }
+            toast("SSH Error", { description: kind.error, variant: "error" });
+            break;
+          }
+
+          case "session_dropped": {
+            const store = useTerminalStore.getState();
+            const sessionTabs = store.getTabsBySessionId(session_id);
+            for (const tab of sessionTabs) {
+              cb.removeTab(tab.tabId);
+            }
+            toast("Session dropped", { description: "Backend session cleaned up", variant: "warning" });
+            break;
+          }
+
+          case "host_key_unknown": {
+            cb.showHostKeyModal(session_id, kind.key_type, kind.fingerprint);
+            break;
+          }
+
+          case "host_key_received": {
+            console.log("Host key received:", kind.fingerprint);
+            break;
+          }
+
+          case "keyboard_auth": {
+            cb.showKeyboardAuthModal(session_id, kind.prompt);
+            break;
+          }
+
+          case "channel_success": {
+            if (channel_id) {
+              const store = useTerminalStore.getState();
+              const tab = [...store.tabs.values()].find(
+                (t) => t.channelId === channel_id && t.status === "connecting"
+              );
+              if (tab) {
+                cb.updateTabStatus(tab.tabId, "connected");
+              }
+            }
+            break;
+          }
+
+          case "channel_close": {
+            if (channel_id) {
+              cb.updateTabStatusByChannelId(channel_id, "disconnected");
+              toast("Shell closed", { description: `Channel ${channel_id.slice(0, 8)}...`, variant: "warning" });
+            }
+            break;
+          }
+
+          case "channel_eof": {
+            if (channel_id) {
+              cb.updateTabStatusByChannelId(channel_id, "disconnected");
+            }
+            break;
+          }
+
+          case "channel_failure": {
+            if (channel_id) {
+              cb.updateTabStatusByChannelId(channel_id, "error");
+              toast("Channel failed", { description: `Channel ${channel_id.slice(0, 8)}...`, variant: "error" });
+            }
+            break;
+          }
+
+          case "exit_status": {
+            if (channel_id) {
+              cb.updateTabStatusByChannelId(channel_id, "disconnected");
+              toast("Process exited", { description: `Exit code: ${kind.exit_status}`, variant: "default" });
+            }
+            break;
+          }
+
+          case "exit_signal": {
+            if (channel_id) {
+              cb.updateTabStatusByChannelId(channel_id, "disconnected");
+              toast("Process killed", { description: `Signal: ${kind.signal_name}`, variant: "error" });
+            }
+            break;
           }
         }
       });
-      if (cancelled) { fn5(); return; }
-      unlisteners.push(fn5);
-
-      const fn6 = await listen<SshErrorEvent>("ssh:error", (event) => {
-        const { session_id, error } = event.payload;
-        console.error(`SSH error [${session_id}]:`, error);
-
-        const store = useTerminalStore.getState();
-        const sessionTabs = store.getTabsBySessionId(session_id);
-        for (const tab of sessionTabs) {
-          callbacksRef.current.updateTabStatus(tab.tabId, "error");
-        }
-        toast("SSH Error", { description: error, variant: "error" });
-      });
-      if (cancelled) { fn6(); return; }
-      unlisteners.push(fn6);
-
-      const fn7 = await listen<SshChannelEvent>("ssh:channel-event", (event) => {
-        const { channel_id, event_type } = event.payload;
-
-        if (event_type === "Success") {
-          const store = useTerminalStore.getState();
-          const tab = [...store.tabs.values()].find(
-            (t) => t.channelId === channel_id && t.status === "connecting"
-          );
-          if (tab) {
-            callbacksRef.current.updateTabStatus(tab.tabId, "connected");
-          }
-        } else if (event_type === "Close") {
-          callbacksRef.current.updateTabStatusByChannelId(channel_id, "disconnected");
-          toast("Shell closed", { description: `Channel ${channel_id.slice(0, 8)}...`, variant: "warning" });
-        } else if (event_type === "Eof") {
-          callbacksRef.current.updateTabStatusByChannelId(channel_id, "disconnected");
-        } else if (event_type === "ChannelFailure") {
-          callbacksRef.current.updateTabStatusByChannelId(channel_id, "error");
-          toast("Channel failed", { description: `Channel ${channel_id.slice(0, 8)}...`, variant: "error" });
-        }
-      });
-      if (cancelled) { fn7(); return; }
-      unlisteners.push(fn7);
-
-      const fn8 = await listen<SshExitStatusEvent>("ssh:exit-status", (event) => {
-        const { channel_id, exit_status } = event.payload;
-        callbacksRef.current.updateTabStatusByChannelId(channel_id, "disconnected");
-        toast("Process exited", { description: `Exit code: ${exit_status}`, variant: "default" });
-      });
-      if (cancelled) { fn8(); return; }
-      unlisteners.push(fn8);
+      if (cancelled) { fn(); return; }
+      unlisteners.push(fn);
     })();
 
     return () => {

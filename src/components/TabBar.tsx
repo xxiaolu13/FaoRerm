@@ -16,16 +16,14 @@ export function TabBar() {
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
   const showContextMenu = useUIStore((s) => s.showContextMenu);
+  const setActiveSection = useUIStore((s) => s.setActiveSection);
 
   const handleClose = (tabId: string) => {
     const tab = tabs.get(tabId);
     if (!tab) return;
 
-    const store = useTerminalStore.getState();
-    const sessionTabs = store.getTabsBySessionId(tab.sessionId);
-
-    if (sessionTabs.length <= 1) {
-      invoke("ssh_disconnect", { sessionId: tab.sessionId }).catch(() => {});
+    if (tab.channelId) {
+      invoke("ssh_close_channel", { sessionId: tab.sessionId, channelId: tab.channelId }).catch(() => {});
     }
 
     if (hostKeyModal?.sessionId === tab.sessionId) hideHostKeyModal();
@@ -33,6 +31,11 @@ export function TabBar() {
 
     removeTab(tabId);
     toast("Tab closed", { variant: "default", duration: 2000 });
+  };
+
+  const handleTabClick = (tabId: string) => {
+    setActiveTab(tabId);
+    setActiveSection("servers");
   };
 
   const handleContextMenu = (e: React.MouseEvent, tabId: string) => {
@@ -64,13 +67,13 @@ export function TabBar() {
           <div
             key={tabId}
             className={`tab-item ${isActive ? "tab-item--active" : ""}`}
-            onClick={() => setActiveTab(tabId)}
+            onClick={() => handleTabClick(tabId)}
             onContextMenu={(e) => handleContextMenu(e, tabId)}
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter") setActiveTab(tabId);
+              if (e.key === "Enter") handleTabClick(tabId);
             }}
           >
             <span
@@ -151,12 +154,16 @@ export function TabContextMenu() {
     const channelId = crypto.randomUUID();
     const newTabId = crypto.randomUUID();
 
+    const currentTerm = terminalManager.getTerminal(tabId);
+    const cols = currentTerm?.cols ?? 80;
+    const rows = currentTerm?.rows ?? 24;
+
     try {
       await invoke("ssh_open_shell", {
         sessionId,
         channelId,
-        cols: 80,
-        rows: 24,
+        cols,
+        rows,
       });
 
       terminalManager.setChannelId(newTabId, channelId);
@@ -181,10 +188,9 @@ export function TabContextMenu() {
 
   const handleCloseTab = () => {
     hideContextMenu();
-    const store = useTerminalStore.getState();
-    const currentSessionTabs = store.getTabsBySessionId(sessionId);
-    if (currentSessionTabs.length <= 1) {
-      invoke("ssh_disconnect", { sessionId }).catch(() => {});
+    const t = tabs.get(tabId);
+    if (t?.channelId) {
+      invoke("ssh_close_channel", { sessionId, channelId: t.channelId }).catch(() => {});
     }
     if (hostKeyModal?.sessionId === sessionId) hideHostKeyModal();
     if (keyboardAuthModal?.sessionId === sessionId) hideKeyboardAuthModal();
@@ -195,17 +201,10 @@ export function TabContextMenu() {
     hideContextMenu();
     for (const tid of otherTabs) {
       const t = tabs.get(tid);
-      if (t) {
-        const store = useTerminalStore.getState();
-        const currentSessionTabs = store.getTabsBySessionId(t.sessionId);
-        const remainingAfterThis = currentSessionTabs.filter(
-          (st) => st.tabId !== tid && !otherTabs.includes(st.tabId)
-        );
-        if (currentSessionTabs.length <= 1 || remainingAfterThis.length === 0) {
-          invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
-        }
-        removeTab(tid);
+      if (t?.channelId) {
+        invoke("ssh_close_channel", { sessionId: t.sessionId, channelId: t.channelId }).catch(() => {});
       }
+      removeTab(tid);
     }
     setActiveTab(tabId);
   };
@@ -214,14 +213,10 @@ export function TabContextMenu() {
     hideContextMenu();
     for (const tid of rightTabs) {
       const t = tabs.get(tid);
-      if (t) {
-        const store = useTerminalStore.getState();
-        const currentSessionTabs = store.getTabsBySessionId(t.sessionId);
-        if (currentSessionTabs.length <= 1) {
-          invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
-        }
-        removeTab(tid);
+      if (t?.channelId) {
+        invoke("ssh_close_channel", { sessionId: t.sessionId, channelId: t.channelId }).catch(() => {});
       }
+      removeTab(tid);
     }
   };
 

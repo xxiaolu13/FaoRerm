@@ -5,7 +5,7 @@ use serde::{Deserialize,Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use uuid::Uuid;
-use std::collections::{HashMap,BTreeMap};
+use std::collections::{HashMap,BTreeMap,HashSet};
 use bytes::Bytes;
 use crate::client::domain::{FRCEvent, FaoRemoteClientHandles, FRCCommand, FRCCommandReply};
 
@@ -72,7 +72,7 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub user: String,
-    #[serde(rename = "black_list_switch")]
+    #[serde(default, rename = "black_list_switch")]
     pub enabled: bool,
     #[serde(default)]
     pub contains: Vec<String>,
@@ -82,6 +82,7 @@ pub struct ServerConfig {
     // pub combined_hex: String,
     #[serde(rename = "password")]
     pub secret: Option<String>, // 加密后的密码
+    #[serde(default)]
     pub allow_insecure_algos: bool,
     pub inactivity_timeout: Option<u64>,
     pub keepalive_interval: Option<u64>,
@@ -117,14 +118,15 @@ impl ConfigManager {
 
 
     fn save_to_path(path: &Path, config: &FaoConfig) -> Result<(), ConfigError> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        
         let content = toml::to_string_pretty(config)?;
         
-        // 生成同目录下的 .tmp 文件路径
         let tmp_path = path.with_extension("toml.tmp");
         
-        // 1. 写入临时文件
         fs::write(&tmp_path, content)?;
-        // 2. 原子重命名覆盖原文件，防止写入一半时断电/崩溃导致配置清空
         fs::rename(tmp_path, path)?;
         
         Ok(())
@@ -200,6 +202,7 @@ pub struct SessionAuthState {
 pub struct SessionHandles {
     pub command_tx: UnboundedSender<(FRCCommand, Option<FRCCommandReply>)>,
     pub abort_tx: UnboundedSender<()>,
+    pub channels: Arc<Mutex<HashSet<String>>>,
 }
 
 // 暂时通过 static 代替
@@ -231,7 +234,7 @@ impl Services {
         let recordings = Arc::new(Mutex::new(recordings));
 
 
-        let proj_dirs = ProjectDirs::from("com", "xiaolu", "FaoRerm")
+        let proj_dirs = ProjectDirs::from("", "", "FaoRerm")
             .ok_or(ConfigError::ServerNotFound("path not found".to_string()))?;
         let config_path = proj_dirs.config_dir().join("faoconfig.toml");
         let cm = ConfigManager::load_or_default(config_path)?;

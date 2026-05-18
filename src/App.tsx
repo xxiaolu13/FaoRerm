@@ -8,7 +8,6 @@ import { Sidebar } from "./components/Sidebar";
 import { TabBar, TabContextMenu } from "./components/TabBar";
 import { TerminalView } from "./components/TerminalView";
 import { QuickCommands } from "./components/QuickCommands";
-import { ServerDetailPanel } from "./components/ServerDetailPanel";
 import { ManagementPage } from "./components/ManagementPage";
 import { LockScreen } from "./components/LockScreen";
 import { Toaster } from "./components/Toaster";
@@ -71,29 +70,39 @@ function ActivityBar() {
   );
 }
 
+function RightDrawerToggle() {
+  const rightDrawerOpen = useUIStore((s) => s.rightDrawerOpen);
+  const toggleRightDrawer = useUIStore((s) => s.toggleRightDrawer);
+
+  return (
+    <button
+      className="right-drawer-toggle"
+      onClick={toggleRightDrawer}
+      title={rightDrawerOpen ? "Close panel (Ctrl+Shift+P)" : "Quick Commands (Ctrl+Shift+P)"}
+    >
+      {rightDrawerOpen ? (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M9 3L5 7L9 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 3.5L7 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M3 7L9 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M3 10.5L6 10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M9 5L12 7.5L9 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function RightDrawer() {
   const rightDrawerOpen = useUIStore((s) => s.rightDrawerOpen);
-  const setRightDrawerOpen = useUIStore((s) => s.setRightDrawerOpen);
-  const toggleRightDrawer = useUIStore((s) => s.toggleRightDrawer);
   const [activeTab, setActiveTab] = useState<"commands" | "ai">("commands");
 
   return (
-    <>
-      {!rightDrawerOpen && (
-        <button
-          className="right-drawer-toggle"
-          onClick={toggleRightDrawer}
-          title="Quick Commands (Ctrl+Shift+P)"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M4 4L8 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <path d="M4 8L10 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <path d="M4 12L7 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <path d="M10 6L13 8.5L10 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-      <div className={`right-drawer ${rightDrawerOpen ? "right-drawer--open" : ""}`}>
+    <div className={`right-drawer-wrapper ${rightDrawerOpen ? "right-drawer-wrapper--open" : ""}`}>
+      <div className="right-drawer">
         <div className="right-drawer-header">
           <div className="right-drawer-tabs">
             <button
@@ -111,15 +120,6 @@ function RightDrawer() {
               AI
             </button>
           </div>
-          <button
-            className="btn-icon"
-            onClick={() => setRightDrawerOpen(false)}
-            title="Close panel"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
         </div>
         <div className="right-drawer-content">
           {activeTab === "commands" && <QuickCommands />}
@@ -138,7 +138,7 @@ function RightDrawer() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -147,61 +147,46 @@ function TerminalArea() {
   const tabOrder = useTerminalStore((s) => s.tabOrder);
   const activeTabId = useTerminalStore((s) => s.activeTabId);
   const activeSection = useUIStore((s) => s.activeSection);
-  const selectedServerId = useUIStore((s) => s.selectedServerId);
   const servers = useServerStore((s) => s.servers);
 
-  if (activeSection === "management") {
-    return (
-      <div className="terminal-area">
-        <ManagementPage />
-      </div>
-    );
-  }
+  const isServersSection = activeSection === "servers";
 
-  if (selectedServerId && tabOrder.length === 0) {
-    return (
-      <div className="terminal-area">
-        <ServerDetailPanel />
-      </div>
-    );
-  }
+  return (
+    <div className="terminal-area">
+      {tabOrder.map((tabId) => {
+        const tab = tabs.get(tabId);
+        if (!tab) return null;
+        return (
+          <TerminalView
+            key={tabId}
+            tabId={tabId}
+            sessionId={tab.sessionId}
+            channelId={tab.channelId}
+            active={tabId === activeTabId && isServersSection}
+          />
+        );
+      })}
 
-  if (selectedServerId && tabOrder.length > 0) {
-    const hasServerTab = tabOrder.some((tid) => {
-      const t = tabs.get(tid);
-      return t?.serverId === selectedServerId;
-    });
-
-    if (!hasServerTab) {
-      return (
-        <div className="terminal-area">
-          <ServerDetailPanel />
+      {activeSection === "management" && (
+        <div className="terminal-area-overlay">
+          <ManagementPage />
         </div>
-      );
-    }
-  }
+      )}
 
-  if (tabOrder.length === 0) {
-    const serverEntries = Object.entries(servers);
-    return (
-      <div className="terminal-area terminal-area--empty">
+      {isServersSection && tabOrder.length === 0 && (
         <div className="dashboard">
           <div className="dashboard-hero">
-            <svg className="dashboard-logo" width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <rect x="6" y="10" width="36" height="28" rx="3" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M14 18L18 22L14 26" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M22 26H30" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <img className="dashboard-logo" src="/logo.png" alt="FaoRerm" />
             <h2 className="dashboard-title">Welcome to FaoRerm</h2>
             <p className="dashboard-desc">
               Connect to a server to start a remote terminal session.
             </p>
           </div>
-          {serverEntries.length > 0 && (
+          {Object.entries(servers).length > 0 && (
             <div className="dashboard-servers">
               <h3 className="dashboard-section-title">Quick Connect</h3>
               <div className="dashboard-server-grid">
-                {serverEntries.slice(0, 6).map(([id, server]) => (
+                {Object.entries(servers).slice(0, 6).map(([id, server]) => (
                   <ServerCard key={id} id={id} server={server} />
                 ))}
               </div>
@@ -218,28 +203,14 @@ function TerminalArea() {
                 <kbd className="shortcut-key">Ctrl+Shift+P</kbd>
                 <span className="shortcut-desc">Toggle command panel</span>
               </div>
+              <div className="shortcut-item">
+                <kbd className="shortcut-key">Ctrl+Shift+C</kbd>
+                <span className="shortcut-desc">Copy from terminal</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="terminal-area">
-      {tabOrder.map((tabId) => {
-        const tab = tabs.get(tabId);
-        if (!tab) return null;
-        return (
-          <TerminalView
-            key={tabId}
-            tabId={tabId}
-            sessionId={tab.sessionId}
-            channelId={tab.channelId}
-            active={tabId === activeTabId}
-          />
-        );
-      })}
+      )}
     </div>
   );
 }
@@ -248,21 +219,13 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
   const addTab = useTerminalStore((s) => s.addTab);
   const setChannel = useTerminalStore((s) => s.setChannel);
-  const tabs = useTerminalStore((s) => s.tabs);
-  const tabOrder = useTerminalStore((s) => s.tabOrder);
-
-  const isActive = tabOrder.some((tid) => {
-    const t = tabs.get(tid);
-    return t?.serverId === id && (t.status === "connected" || t.status === "connecting");
-  });
+  const setActiveSection = useUIStore((s) => s.setActiveSection);
 
   const handleClick = async () => {
     if (!masterPasswordSet) {
       toast("Master password required", { variant: "warning" });
       return;
     }
-
-    if (isActive) return;
 
     toast("Connecting...", { description: `Establishing SSH session to ${server.host}`, variant: "default" });
 
@@ -291,6 +254,8 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
         status: "connecting",
       });
 
+      setActiveSection("servers");
+
       toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
     } catch (err) {
       toast("Connection failed", { description: String(err), variant: "error" });
@@ -299,9 +264,9 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
 
   return (
     <button
-      className={`dashboard-server-card ${isActive ? "dashboard-server-card--active" : ""}`}
+      className="dashboard-server-card"
       onClick={handleClick}
-      disabled={!masterPasswordSet || isActive}
+      disabled={!masterPasswordSet}
     >
       <div className="dashboard-server-card-icon">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -313,11 +278,9 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
         <span className="dashboard-server-card-name">{id}</span>
         <span className="dashboard-server-card-detail">{server.user}@{server.host}</span>
       </div>
-      {!isActive && (
-        <svg className="dashboard-server-card-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 2L10 6L2 10V2Z" fill="currentColor" opacity="0.4" />
-        </svg>
-      )}
+      <svg className="dashboard-server-card-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M2 2L10 6L2 10V2Z" fill="currentColor" opacity="0.4" />
+      </svg>
     </button>
   );
 }
@@ -326,6 +289,7 @@ function GlobalKeyboardShortcuts() {
   const activateLockScreen = useUIStore((s) => s.activateLockScreen);
   const toggleRightDrawer = useUIStore((s) => s.toggleRightDrawer);
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
+  const activeTabId = useTerminalStore((s) => s.activeTabId);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -337,10 +301,22 @@ function GlobalKeyboardShortcuts() {
         e.preventDefault();
         toggleRightDrawer();
       }
+      if (e.ctrlKey && e.shiftKey && e.key === "C") {
+        e.preventDefault();
+        if (activeTabId) {
+          const term = terminalManager.getTerminal(activeTabId);
+          if (term && term.hasSelection()) {
+            const selection = term.getSelection();
+            if (selection) {
+              navigator.clipboard.writeText(selection).catch(() => {});
+            }
+          }
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activateLockScreen, toggleRightDrawer, masterPasswordSet]);
+  }, [activateLockScreen, toggleRightDrawer, masterPasswordSet, activeTabId]);
 
   return null;
 }
@@ -356,6 +332,7 @@ export default function App() {
       <main className="main-content">
         <TabBar />
         <TerminalArea />
+        <RightDrawerToggle />
       </main>
       <RightDrawer />
 
