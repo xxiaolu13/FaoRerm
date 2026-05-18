@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(frontend-design)",
+      "Skill(react-best-practices)",
+      "Skill(composition-patterns)",
+      "Skill(web-design-guidelines)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

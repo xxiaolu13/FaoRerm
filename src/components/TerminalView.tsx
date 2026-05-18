@@ -1,0 +1,327 @@
+import { useEffect, useRef, useState } from "react";
+import { Terminal } from "xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
+import { invoke } from "@tauri-apps/api/core";
+import { terminalManager } from "../terminal/terminalManager";
+import { useUIStore } from "../stores/uiStore";
+import { useTerminalStore } from "../stores/terminalStore";
+import "xterm/css/xterm.css";
+
+interface Props {
+  sessionId: string;
+  channelId: string;
+  active: boolean;
+}
+
+export function TerminalView({ sessionId, channelId, active }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const channelIdRef = useRef(channelId);
+  const hostKeyModal = useUIStore((s) => s.hostKeyModal);
+  const keyboardAuthModal = useUIStore((s) => s.keyboardAuthModal);
+  const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
+  const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
+  const removeTab = useTerminalStore((s) => s.removeTab);
+
+  channelIdRef.current = channelId;
+
+  useEffect(() => {
+    if (termRef.current) return;
+
+    const term = new Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
+      theme: {
+        background: "#1e1e2e",
+        foreground: "#cdd6f4",
+        cursor: "#f5e0dc",
+        cursorAccent: "#1e1e2e",
+        selectionBackground: "#585b70",
+        selectionForeground: "#cdd6f4",
+        black: "#45475a",
+        red: "#f38ba8",
+        green: "#a6e3a1",
+        yellow: "#f9e2af",
+        blue: "#89b4fa",
+        magenta: "#f5c2e7",
+        cyan: "#94e2d5",
+        white: "#bac2de",
+        brightBlack: "#585b70",
+        brightRed: "#f38ba8",
+        brightGreen: "#a6e3a1",
+        brightYellow: "#f9e2af",
+        brightBlue: "#89b4fa",
+        brightMagenta: "#f5c2e7",
+        brightCyan: "#94e2d5",
+        brightWhite: "#a6adc8",
+      },
+      allowProposedApi: true,
+      scrollback: 10000,
+    });
+
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+
+    try {
+      term.loadAddon(new WebglAddon());
+    } catch {
+      console.warn("WebGL not available, falling back to canvas renderer");
+    }
+
+    if (containerRef.current) {
+      term.open(containerRef.current);
+      fitAddon.fit();
+    }
+
+    terminalManager.register(sessionId, term);
+    termRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    let lastData = "";
+    let lastTime = 0;
+    const DEDUP_WINDOW_MS = 25;
+
+    term.onData((data) => {
+      const chId = channelIdRef.current;
+      if (!chId) return;
+
+      const now = Date.now();
+      if (data === lastData && now - lastTime < DEDUP_WINDOW_MS) {
+        return;
+      }
+      lastData = data;
+      lastTime = now;
+
+      const encoder = new TextEncoder();
+      const bytes = Array.from(encoder.encode(data));
+      invoke("ssh_send_data", {
+        sessionId,
+        channelId: chId,
+        data: bytes,
+      }).catch(console.error);
+    });
+
+    const observer = new ResizeObserver(() => {
+      fitAddon.fit();
+      const chId = channelIdRef.current;
+      if (termRef.current && chId) {
+        invoke("ssh_resize_pty", {
+          sessionId,
+          channelId: chId,
+          cols: termRef.current.cols,
+          rows: termRef.current.rows,
+        }).catch(console.error);
+      }
+    });
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+      terminalManager.unregister(sessionId);
+      term.dispose();
+      termRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (active && fitAddonRef.current && containerRef.current) {
+      const timer = setTimeout(() => {
+        fitAddonRef.current?.fit();
+        if (termRef.current && channelIdRef.current) {
+          invoke("ssh_resize_pty", {
+            sessionId,
+            channelId: channelIdRef.current,
+            cols: termRef.current.cols,
+            rows: termRef.current.rows,
+          }).catch(console.error);
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [active, sessionId]);
+
+  const isHostKeyTarget = hostKeyModal?.sessionId === sessionId;
+  const isKeyboardAuthTarget = keyboardAuthModal?.sessionId === sessionId;
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: active ? "block" : "none",
+        position: "relative",
+      }}
+    >
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+
+      {isHostKeyTarget && hostKeyModal && (
+        <div className="tab-modal-overlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-icon modal-icon--warning">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L22 20H2L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                  <path d="M12 9V13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="12" cy="17" r="1" fill="currentColor" />
+                </svg>
+              </div>
+              <h2 className="modal-title">Host Key Verification</h2>
+              <p className="modal-desc">
+                The server's host key is not recognized. Verify the fingerprint before continuing.
+              </p>
+            </div>
+            <div className="modal-body">
+              <div className="key-info">
+                <div className="key-info-row">
+                  <span className="key-info-label">Key Type</span>
+                  <code className="key-info-value">{hostKeyModal.keyType}</code>
+                </div>
+                <div className="key-info-row">
+                  <span className="key-info-label">Fingerprint</span>
+                  <code className="key-info-value key-fingerprint">{hostKeyModal.fingerprint}</code>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn--danger" onClick={async () => {
+                try {
+                  await invoke("ssh_confirm_host_key", { sessionId: hostKeyModal.sessionId, accepted: false });
+                  await invoke("ssh_disconnect", { sessionId: hostKeyModal.sessionId });
+                } catch {}
+                removeTab(hostKeyModal.sessionId);
+                hideHostKeyModal();
+              }}>
+                Deny
+              </button>
+              <button className="btn btn--primary" onClick={async () => {
+                try {
+                  await invoke("ssh_confirm_host_key", { sessionId: hostKeyModal.sessionId, accepted: true });
+                } catch (err) {
+                  console.error("Failed to confirm host key:", err);
+                }
+                hideHostKeyModal();
+              }}>
+                Accept &amp; Trust
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isKeyboardAuthTarget && keyboardAuthModal && (
+        <KeyboardAuthInline
+          sessionId={keyboardAuthModal.sessionId}
+          prompt={keyboardAuthModal.prompt}
+          onCancel={() => {
+            invoke("ssh_disconnect", { sessionId: keyboardAuthModal.sessionId }).catch(() => {});
+            removeTab(keyboardAuthModal.sessionId);
+            hideKeyboardAuthModal();
+          }}
+          onSubmit={async (response) => {
+            try {
+              await invoke("ssh_respond_keyboard_auth", { sessionId: keyboardAuthModal.sessionId, response });
+              hideKeyboardAuthModal();
+            } catch (err) {
+              console.error("Failed to respond to keyboard auth:", err);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function KeyboardAuthInline({
+  sessionId,
+  prompt,
+  onCancel,
+  onSubmit,
+}: {
+  sessionId: string;
+  prompt: string;
+  onCancel: () => void;
+  onSubmit: (response: string) => Promise<void>;
+}) {
+  const [response, setResponse] = useState("");
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isPassword = /password|passwd|secret/i.test(prompt);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel]);
+
+  const handleSubmit = async () => {
+    if (!response) return;
+    setLoading(true);
+    try {
+      await onSubmit(response);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="tab-modal-overlay">
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-icon modal-icon--info">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path d="M12 16V11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <circle cx="12" cy="8" r="1" fill="currentColor" />
+            </svg>
+          </div>
+          <h2 className="modal-title">Authentication Required</h2>
+          <p className="modal-desc modal-desc--prompt">{prompt}</p>
+        </div>
+        <div className="modal-body">
+          <div className="form-group">
+            <label className="form-label" htmlFor={`kb-auth-${sessionId}`}>
+              Response
+            </label>
+            <input
+              id={`kb-auth-${sessionId}`}
+              ref={inputRef}
+              className="input"
+              type={isPassword ? "password" : "text"}
+              value={response}
+              onChange={(e) => setResponse(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && response) handleSubmit();
+              }}
+              autoFocus
+              placeholder={isPassword ? "Enter password..." : "Enter response..."}
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn--ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn--primary" onClick={handleSubmit} disabled={loading || !response}>
+            {loading ? "Sending..." : "Submit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

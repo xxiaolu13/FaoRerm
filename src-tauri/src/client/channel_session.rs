@@ -1,0 +1,223 @@
+use anyhow::Result;
+use bytes::Bytes;
+use russh::client::Msg;
+use russh::Channel;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tracing::*;
+use uuid::Uuid;
+
+
+use super::domain::{SshClientError, FRCEvent};
+use super::common::ChannelOperation;
+pub struct SessionChannel {
+    client_channel: Channel<Msg>,
+    channel_id: Uuid,
+    ops_rx: UnboundedReceiver<ChannelOperation>,
+    events_tx: UnboundedSender<FRCEvent>,
+    session_id: Uuid,
+    closed: bool,
+}
+
+impl SessionChannel {
+    pub const fn new(
+        client_channel: Channel<Msg>,
+        channel_id: Uuid,
+        ops_rx: UnboundedReceiver<ChannelOperation>,
+        events_tx: UnboundedSender<FRCEvent>,
+        session_id: Uuid,
+    ) -> Self {
+        Self {
+            client_channel,
+            channel_id,
+            ops_rx,
+            events_tx,
+            session_id,
+            closed: false,
+        }
+    }
+
+    pub async fn run(mut self) -> Result<(), SshClientError> {
+        info!(channel = %self.channel_id, session = %self.session_id, "SessionChannel: starting run loop");
+        loop {
+            tokio::select! {
+                channel_event = self.client_channel.wait() => {
+                    match channel_event {
+                        Some(russh::ChannelMsg::Data { data }) => {
+                            let bytes: &[u8] = &data;
+                            let len = bytes.len();
+                            trace!(
+                                channel = %self.channel_id,
+                                session = %self.session_id,
+                                data_len = len,
+                                "channel_data: inflow from server"
+                            );
+                            self.events_tx.send(FRCEvent::Output(
+                                self.channel_id,
+                                Bytes::from(bytes.to_vec()),
+                            )).map_err(|_| SshClientError::MpscError)?;
+                        }
+                        Some(russh::ChannelMsg::Close) => {
+                            break;
+                        },
+                        Some(russh::ChannelMsg::Success) => {
+                            self.events_tx.send(FRCEvent::Success(self.channel_id)).map_err(|_| SshClientError::MpscError)?;
+                        },
+                        Some(russh::ChannelMsg::Failure) => {
+                            self.events_tx.send(FRCEvent::ChannelFailure(self.channel_id)).map_err(|_| SshClientError::MpscError)?;
+                        },
+                        Some(russh::ChannelMsg::Eof) => {
+                            self.events_tx.send(FRCEvent::Eof(self.channel_id)).map_err(|_| SshClientError::MpscError)?;
+                        }
+                        Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                            self.events_tx.send(FRCEvent::ExitStatus(self.channel_id, exit_status)).map_err(|_| SshClientError::MpscError)?;
+                        }
+                        Some(russh::ChannelMsg::ExitSignal {
+                            core_dumped, error_message, lang_tag, signal_name
+                        }) => {
+                            self.events_tx.send(FRCEvent::ExitSignal {
+                                channel: self.channel_id, core_dumped, error_message, lang_tag, signal_name
+                            }).map_err(|_| SshClientError::MpscError)?;
+                        },
+                        Some(russh::ChannelMsg::WindowAdjusted { new_size }) => {
+                            trace!(
+                                channel = %self.channel_id,
+                                session = %self.session_id,
+                                new_window_size = new_size,
+                                "window_adjust: outflow to server (window expanded)"
+                            );
+                        }
+                        Some(russh::ChannelMsg::XonXoff { client_can_do }) => {
+                            trace!(
+                                channel = %self.channel_id,
+                                session = %self.session_id,
+                                client_can_do,
+                                "xon_xoff: flow control signal"
+                            );
+                        }
+                        Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                            let data: &[u8] = &data;
+                            self.events_tx.send(FRCEvent::ExtendedData {
+                                channel: self.channel_id,
+                                data: Bytes::from(data.to_vec()),
+                                ext,
+                            }).map_err(|_| SshClientError::MpscError)?;
+                        }
+                        Some(msg) => {
+                            warn!("unhandled channel message: {:?}", msg);
+                        }
+                        None => {
+                            break
+                        },
+                    }
+                }
+
+                incoming_data = self.ops_rx.recv() => {
+                    match incoming_data {
+                        Some(ChannelOperation::Data(data)) => {
+                            trace!(
+                                channel = %self.channel_id,
+                                session = %self.session_id,
+                                data_len = data.len(),
+                                "channel_data: outflow to server (user input)"
+                            );
+                            self.client_channel.data(&*data).await?;
+                        }
+                        Some(ChannelOperation::ExtendedData { ext, data }) => {
+                            self.client_channel.extended_data(ext, &*data).await?;
+                        }
+                        Some(ChannelOperation::RequestPty(request)) => {
+                            info!(
+                                channel = %self.channel_id,
+                                term = %request.term,
+                                cols = request.col_width,
+                                rows = request.row_height,
+                                "SessionChannel: requesting PTY"
+                            );
+                            self.client_channel.request_pty(
+                                true,
+                                &request.term,
+                                request.col_width,
+                                request.row_height,
+                                request.pix_width,
+                                request.pix_height,
+                                &request.modes,
+                            ).await?;
+                        }
+                        Some(ChannelOperation::ResizePty(request)) => {
+                            info!(
+                                channel = %self.channel_id,
+                                cols = request.col_width,
+                                rows = request.row_height,
+                                "SessionChannel: resize pty"
+                            );
+                            if request.col_width == 0 || request.row_height == 0 {
+                                warn!(channel = %self.channel_id, "SessionChannel: skipping resize with 0 dimension");
+                                continue;
+                            }
+                            self.client_channel.window_change(
+                                request.col_width,
+                                request.row_height,
+                                request.pix_width,
+                                request.pix_height,
+                            ).await?;
+                        },
+                        Some(ChannelOperation::RequestShell) => {
+                            self.client_channel.request_shell(true).await?;
+                        },
+                        Some(ChannelOperation::RequestEnv(name, value)) => {
+                            self.client_channel.set_env(false, name, value).await?;
+                        },
+                        Some(ChannelOperation::RequestExec(command)) => {
+                            self.client_channel.exec(false, command).await?;
+                        },
+                        Some(ChannelOperation::RequestSubsystem(name)) => {
+                            self.client_channel.request_subsystem(false, &name).await?;
+                        },
+                        Some(ChannelOperation::Eof) => {
+                            self.client_channel.eof().await?;
+                        },
+                        Some(ChannelOperation::Signal(signal)) => {
+                            self.client_channel.signal(signal).await?;
+                        },
+                        Some(ChannelOperation::OpenShell | ChannelOperation::OpenDirectTCPIP { .. } | ChannelOperation::OpenDirectStreamlocal { .. } | ChannelOperation::OpenX11 { .. }) => unreachable!(),
+                        Some(ChannelOperation::RequestX11(request)) => {
+                            self.client_channel.request_x11(
+                                true,
+                                request.single_conection,
+                                request.x11_auth_protocol,
+                                request.x11_auth_cookie,
+                                request.x11_screen_number,
+                            ).await?;
+                        },
+                        Some(ChannelOperation::AgentForward) => {
+                            self.client_channel.agent_forward(
+                                true,
+                            ).await?;
+                        }
+                        Some(ChannelOperation::Close)
+                        | None => break,
+                    }
+                }
+            }
+        }
+        self.close();
+        Ok(())
+    }
+
+    fn close(&mut self) {
+        if !self.closed {
+            let _ = self
+                .events_tx
+                .send(FRCEvent::Close(self.channel_id))
+                .map_err(|_| SshClientError::MpscError);
+            self.closed = true;
+        }
+    }
+}
+
+impl Drop for SessionChannel {
+    fn drop(&mut self) {
+        let () = self.close();
+        info!(channel=%self.channel_id, session=%self.session_id, "Closed");
+    }
+}
