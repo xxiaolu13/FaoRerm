@@ -9,12 +9,13 @@ import { useTerminalStore } from "../stores/terminalStore";
 import "xterm/css/xterm.css";
 
 interface Props {
+  tabId: string;
   sessionId: string;
   channelId: string;
   active: boolean;
 }
 
-export function TerminalView({ sessionId, channelId, active }: Props) {
+export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -24,6 +25,8 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
   const removeTab = useTerminalStore((s) => s.removeTab);
+  const tab = useTerminalStore((s) => s.tabs.get(tabId));
+  const tabStatus = tab?.status ?? "connecting";
 
   channelIdRef.current = channelId;
 
@@ -76,7 +79,12 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
       fitAddon.fit();
     }
 
-    terminalManager.register(sessionId, term);
+    terminalManager.register(tabId, term);
+
+    if (channelId) {
+      terminalManager.setChannelId(tabId, channelId);
+    }
+
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
@@ -123,12 +131,18 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
 
     return () => {
       observer.disconnect();
-      terminalManager.unregister(sessionId);
+      terminalManager.unregister(tabId);
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [sessionId]);
+  }, [tabId]);
+
+  useEffect(() => {
+    if (channelId && termRef.current) {
+      terminalManager.setChannelId(tabId, channelId);
+    }
+  }, [tabId, channelId]);
 
   useEffect(() => {
     if (active && fitAddonRef.current && containerRef.current) {
@@ -150,6 +164,8 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
   const isHostKeyTarget = hostKeyModal?.sessionId === sessionId;
   const isKeyboardAuthTarget = keyboardAuthModal?.sessionId === sessionId;
 
+  const showStatusOverlay = tabStatus === "connecting" || tabStatus === "disconnected" || tabStatus === "error";
+
   return (
     <div
       style={{
@@ -160,6 +176,45 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
       }}
     >
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+
+      {showStatusOverlay && !isHostKeyTarget && !isKeyboardAuthTarget && (
+        <div className="terminal-status-overlay">
+          <div className="terminal-status-card">
+            {tabStatus === "connecting" && (
+              <>
+                <div className="terminal-status-spinner">
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <circle cx="14" cy="14" r="11" stroke="currentColor" strokeWidth="2" strokeDasharray="50" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <span className="terminal-status-text">Establishing connection...</span>
+                <span className="terminal-status-hint">Connecting to {tab?.host ?? sessionId}</span>
+              </>
+            )}
+            {tabStatus === "disconnected" && (
+              <>
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="terminal-status-icon terminal-status-icon--muted">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M10 10L18 18M18 10L10 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                <span className="terminal-status-text">Session Disconnected</span>
+                <span className="terminal-status-hint">The remote connection has been closed</span>
+              </>
+            )}
+            {tabStatus === "error" && (
+              <>
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="terminal-status-icon terminal-status-icon--error">
+                  <path d="M14 3L25 24H3L14 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="M14 11V16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="14" cy="20" r="1" fill="currentColor" />
+                </svg>
+                <span className="terminal-status-text">Connection Error</span>
+                <span className="terminal-status-hint">Failed to establish or maintain the SSH session</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {isHostKeyTarget && hostKeyModal && (
         <div className="tab-modal-overlay">
@@ -195,7 +250,7 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
                   await invoke("ssh_confirm_host_key", { sessionId: hostKeyModal.sessionId, accepted: false });
                   await invoke("ssh_disconnect", { sessionId: hostKeyModal.sessionId });
                 } catch {}
-                removeTab(hostKeyModal.sessionId);
+                removeTab(tabId);
                 hideHostKeyModal();
               }}>
                 Deny
@@ -221,7 +276,7 @@ export function TerminalView({ sessionId, channelId, active }: Props) {
           prompt={keyboardAuthModal.prompt}
           onCancel={() => {
             invoke("ssh_disconnect", { sessionId: keyboardAuthModal.sessionId }).catch(() => {});
-            removeTab(keyboardAuthModal.sessionId);
+            removeTab(tabId);
             hideKeyboardAuthModal();
           }}
           onSubmit={async (response) => {

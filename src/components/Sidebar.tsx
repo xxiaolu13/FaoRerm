@@ -1,17 +1,56 @@
 import { ServerList } from "./ServerList";
 import { useUIStore } from "../stores/uiStore";
-import { useServerStore } from "../stores/serverStore";
 
 export function Sidebar() {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const activeSection = useUIStore((s) => s.activeSection);
-  const showBlacklistModal = useUIStore((s) => s.showBlacklistModal);
-  const clearMasterPassword = useServerStore((s) => s.clearMasterPassword);
-  const showMasterPasswordModal = useUIStore((s) => s.showMasterPasswordModal);
-  const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
+  const managementTab = useUIStore((s) => s.managementTab);
+  const setManagementTab = useUIStore((s) => s.setManagementTab);
 
-  if (sidebarCollapsed || activeSection !== "servers") {
+  if (sidebarCollapsed) {
     return null;
+  }
+
+  if (activeSection === "management") {
+    return (
+      <div className="sidebar">
+        <div className="sidebar-header">
+          <span className="sidebar-logo">Management</span>
+        </div>
+
+        <nav className="sidebar-nav">
+          <div className="sidebar-section">
+            <div className="section-header">
+              <span className="section-title">Data Management</span>
+            </div>
+            <div className="sidebar-actions">
+              <button
+                className={`sidebar-action-btn ${managementTab === "commands" ? "sidebar-action-btn--active" : ""}`}
+                onClick={() => setManagementTab("commands")}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 4L6 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M2 7L9 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M2 10L7 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M10 6L12 7.5L10 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Quick Commands
+              </button>
+              <button
+                className={`sidebar-action-btn ${managementTab === "blacklist" ? "sidebar-action-btn--active" : ""}`}
+                onClick={() => setManagementTab("blacklist")}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+                Blacklist
+              </button>
+            </div>
+          </div>
+        </nav>
+      </div>
+    );
   }
 
   return (
@@ -22,62 +61,6 @@ export function Sidebar() {
 
       <nav className="sidebar-nav">
         <ServerList />
-
-        <div className="sidebar-section">
-          <div className="section-header">
-            <span className="section-title">Settings</span>
-          </div>
-          <div className="sidebar-actions">
-            <button
-              className="sidebar-action-btn"
-              onClick={showBlacklistModal}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M7 1L13 12H1L7 1Z"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M7 5V8"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                />
-                <circle cx="7" cy="10" r="0.5" fill="currentColor" />
-              </svg>
-              Command Blacklist
-            </button>
-            {masterPasswordSet && (
-              <button
-                className="sidebar-action-btn sidebar-action-btn--danger"
-                onClick={async () => {
-                  await clearMasterPassword();
-                  showMasterPasswordModal();
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <rect
-                    x="2.5"
-                    y="6"
-                    width="9"
-                    height="6"
-                    rx="1"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                  <path
-                    d="M4.5 6V4C4.5 2.619 5.619 1.5 7 1.5C8.381 1.5 9.5 2.619 9.5 4V6"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                </svg>
-                Lock App
-              </button>
-            )}
-          </div>
-        </div>
       </nav>
     </div>
   );

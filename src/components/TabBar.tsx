@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
+import { toast } from "../stores/toastStore";
+import { terminalManager } from "../terminal/terminalManager";
 
 export function TabBar() {
   const tabs = useTerminalStore((s) => s.tabs);
@@ -12,12 +15,31 @@ export function TabBar() {
   const keyboardAuthModal = useUIStore((s) => s.keyboardAuthModal);
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
+  const showContextMenu = useUIStore((s) => s.showContextMenu);
 
-  const handleClose = (sessionId: string) => {
-    invoke("ssh_disconnect", { sessionId }).catch(() => {});
-    if (hostKeyModal?.sessionId === sessionId) hideHostKeyModal();
-    if (keyboardAuthModal?.sessionId === sessionId) hideKeyboardAuthModal();
-    removeTab(sessionId);
+  const handleClose = (tabId: string) => {
+    const tab = tabs.get(tabId);
+    if (!tab) return;
+
+    const store = useTerminalStore.getState();
+    const sessionTabs = store.getTabsBySessionId(tab.sessionId);
+
+    if (sessionTabs.length <= 1) {
+      invoke("ssh_disconnect", { sessionId: tab.sessionId }).catch(() => {});
+    }
+
+    if (hostKeyModal?.sessionId === tab.sessionId) hideHostKeyModal();
+    if (keyboardAuthModal?.sessionId === tab.sessionId) hideKeyboardAuthModal();
+
+    removeTab(tabId);
+    toast("Tab closed", { variant: "default", duration: 2000 });
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, tabId: string) => {
+    e.preventDefault();
+    const tab = tabs.get(tabId);
+    if (!tab) return;
+    showContextMenu(e.clientX, e.clientY, tabId, tab.sessionId, tab.serverId);
   };
 
   if (tabOrder.length === 0) {
@@ -32,22 +54,23 @@ export function TabBar() {
 
   return (
     <div className="tab-bar">
-      {tabOrder.map((sessionId) => {
-        const tab = tabs.get(sessionId);
+      {tabOrder.map((tabId) => {
+        const tab = tabs.get(tabId);
         if (!tab) return null;
 
-        const isActive = sessionId === activeTabId;
+        const isActive = tabId === activeTabId;
 
         return (
           <div
-            key={sessionId}
+            key={tabId}
             className={`tab-item ${isActive ? "tab-item--active" : ""}`}
-            onClick={() => setActiveTab(sessionId)}
+            onClick={() => setActiveTab(tabId)}
+            onContextMenu={(e) => handleContextMenu(e, tabId)}
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter") setActiveTab(sessionId);
+              if (e.key === "Enter") setActiveTab(tabId);
             }}
           >
             <span
@@ -62,7 +85,7 @@ export function TabBar() {
               className="tab-close"
               onClick={(e) => {
                 e.stopPropagation();
-                handleClose(sessionId);
+                handleClose(tabId);
               }}
               title="Close tab"
             >
@@ -78,6 +101,169 @@ export function TabBar() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+export function TabContextMenu() {
+  const contextMenu = useUIStore((s) => s.contextMenu);
+  const hideContextMenu = useUIStore((s) => s.hideContextMenu);
+  const tabs = useTerminalStore((s) => s.tabs);
+  const tabOrder = useTerminalStore((s) => s.tabOrder);
+  const removeTab = useTerminalStore((s) => s.removeTab);
+  const setActiveTab = useTerminalStore((s) => s.setActiveTab);
+  const hostKeyModal = useUIStore((s) => s.hostKeyModal);
+  const keyboardAuthModal = useUIStore((s) => s.keyboardAuthModal);
+  const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
+  const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => hideContextMenu();
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") hideContextMenu();
+    };
+    window.addEventListener("click", handleClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("click", handleClick);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [contextMenu, hideContextMenu]);
+
+  if (!contextMenu) return null;
+
+  const { x, y, tabId, sessionId, serverId } = contextMenu;
+  const tab = tabs.get(tabId);
+  if (!tab) return null;
+
+  const sessionTabs = tabOrder.filter((tid) => {
+    const t = tabs.get(tid);
+    return t?.sessionId === sessionId;
+  });
+
+  const otherTabs = tabOrder.filter((tid) => tid !== tabId);
+  const rightTabs = tabOrder.slice(tabOrder.indexOf(tabId) + 1);
+
+  const handleNewShell = async () => {
+    hideContextMenu();
+
+    const channelId = crypto.randomUUID();
+    const newTabId = crypto.randomUUID();
+
+    try {
+      await invoke("ssh_open_shell", {
+        sessionId,
+        channelId,
+        cols: 80,
+        rows: 24,
+      });
+
+      terminalManager.setChannelId(newTabId, channelId);
+
+      const shellCount = sessionTabs.length + 1;
+
+      useTerminalStore.getState().addTab({
+        tabId: newTabId,
+        sessionId,
+        serverId,
+        serverName: `${serverId} (#${shellCount})`,
+        host: tab.host,
+        channelId,
+        status: "connecting",
+      });
+
+      toast("New shell opened", { description: `Shell #${shellCount} on ${tab.host}`, variant: "success" });
+    } catch (err) {
+      toast("Failed to open shell", { description: String(err), variant: "error" });
+    }
+  };
+
+  const handleCloseTab = () => {
+    hideContextMenu();
+    const store = useTerminalStore.getState();
+    const currentSessionTabs = store.getTabsBySessionId(sessionId);
+    if (currentSessionTabs.length <= 1) {
+      invoke("ssh_disconnect", { sessionId }).catch(() => {});
+    }
+    if (hostKeyModal?.sessionId === sessionId) hideHostKeyModal();
+    if (keyboardAuthModal?.sessionId === sessionId) hideKeyboardAuthModal();
+    removeTab(tabId);
+  };
+
+  const handleCloseOthers = () => {
+    hideContextMenu();
+    for (const tid of otherTabs) {
+      const t = tabs.get(tid);
+      if (t) {
+        const store = useTerminalStore.getState();
+        const currentSessionTabs = store.getTabsBySessionId(t.sessionId);
+        const remainingAfterThis = currentSessionTabs.filter(
+          (st) => st.tabId !== tid && !otherTabs.includes(st.tabId)
+        );
+        if (currentSessionTabs.length <= 1 || remainingAfterThis.length === 0) {
+          invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
+        }
+        removeTab(tid);
+      }
+    }
+    setActiveTab(tabId);
+  };
+
+  const handleCloseToRight = () => {
+    hideContextMenu();
+    for (const tid of rightTabs) {
+      const t = tabs.get(tid);
+      if (t) {
+        const store = useTerminalStore.getState();
+        const currentSessionTabs = store.getTabsBySessionId(t.sessionId);
+        if (currentSessionTabs.length <= 1) {
+          invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
+        }
+        removeTab(tid);
+      }
+    }
+  };
+
+  const canNewShell = tab.status === "connected";
+
+  return (
+    <div
+      className="context-menu"
+      style={{ left: x, top: y }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        className={`context-menu-item ${!canNewShell ? "context-menu-item--disabled" : ""}`}
+        onClick={canNewShell ? handleNewShell : undefined}
+        disabled={!canNewShell}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 2V12M2 7H12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+        Open New Shell
+      </button>
+      <div className="context-menu-separator" />
+      <button className="context-menu-item" onClick={handleCloseTab}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+        Close Tab
+      </button>
+      <button
+        className={`context-menu-item ${otherTabs.length === 0 ? "context-menu-item--disabled" : ""}`}
+        onClick={otherTabs.length > 0 ? handleCloseOthers : undefined}
+        disabled={otherTabs.length === 0}
+      >
+        Close Others
+      </button>
+      <button
+        className={`context-menu-item ${rightTabs.length === 0 ? "context-menu-item--disabled" : ""}`}
+        onClick={rightTabs.length > 0 ? handleCloseToRight : undefined}
+        disabled={rightTabs.length === 0}
+      >
+        Close to Right
+      </button>
     </div>
   );
 }

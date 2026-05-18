@@ -31,7 +31,11 @@ export function HostKeyModal() {
     } catch {
       // Session may already be gone
     }
-    removeTab(modal.sessionId);
+    const store = useTerminalStore.getState();
+    const sessionTabs = store.getTabsBySessionId(modal.sessionId);
+    for (const tab of sessionTabs) {
+      removeTab(tab.tabId);
+    }
     hideHostKeyModal();
   };
 

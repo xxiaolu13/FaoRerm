@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useUIStore } from "../stores/uiStore";
 import { useServerStore } from "../stores/serverStore";
 
@@ -8,6 +8,7 @@ export function LockScreen() {
   const unlockMasterPassword = useServerStore((s) => s.unlockMasterPassword);
   const loadServers = useServerStore((s) => s.loadServers);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -17,28 +18,13 @@ export function LockScreen() {
     if (lockScreenActive) {
       setPassword("");
       setError(null);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
     }
   }, [lockScreenActive]);
 
-  useEffect(() => {
-    if (!lockScreenActive) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-      if (e.key === "Enter" && password) {
-        handleUnlock();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [lockScreenActive, password]);
-
-  if (!lockScreenActive) return null;
-
-  const handleUnlock = async () => {
+  const handleUnlock = useCallback(async () => {
     if (!password.trim()) {
       setError("Please enter a password");
       return;
@@ -54,11 +40,54 @@ export function LockScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [password, unlockMasterPassword, loadServers, deactivateLockScreen]);
+
+  useEffect(() => {
+    if (!lockScreenActive) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target === inputRef.current || target.tagName === "INPUT";
+
+      if (isInput) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (password) handleUnlock();
+        }
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+        inputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [lockScreenActive, password, handleUnlock]);
+
+  useEffect(() => {
+    if (!lockScreenActive) return;
+
+    const handleFocus = (e: FocusEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("focusin", handleFocus, true);
+    return () => document.removeEventListener("focusin", handleFocus, true);
+  }, [lockScreenActive]);
+
+  if (!lockScreenActive) return null;
 
   return (
     <div className="lock-screen">
-      <div className="lock-screen-card">
+      <div className="lock-screen-card" ref={cardRef}>
         <div className="lock-screen-icon">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
             <rect

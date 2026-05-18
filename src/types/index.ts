@@ -1,10 +1,9 @@
-// Maps to Rust's ServerConfig
 export interface ServerConfig {
   id: string;
   host: string;
   port: number;
   user: string;
-  enabled: boolean; // black_list_switch
+  enabled: boolean;
   contains: string[];
   method: "password" | "key";
   secret?: string;
@@ -32,10 +31,10 @@ export interface BlacklistConfig {
   contains: string[];
 }
 
-// Tab state
 export type TabStatus = "connecting" | "connected" | "disconnected" | "error";
 
 export interface TabState {
+  tabId: string;
   sessionId: string;
   serverId: string;
   serverName: string;
@@ -44,46 +43,44 @@ export interface TabState {
   status: TabStatus;
 }
 
-// Event payloads from Rust backend (ssh:host-key-unknown)
+export interface ChannelOutput {
+  channel_id: string;
+  data: number[];
+}
+
 export interface HostKeyUnknownEvent {
   session_id: string;
   key_type: string;
   fingerprint: string;
 }
 
-// ssh:keyboard-auth
 export interface KeyBoardAuthEvent {
   session_id: string;
   prompt: string;
 }
 
-// ssh:output
 export interface SshOutputEvent {
   session_id: string;
   channel_id: string;
   data: number[];
 }
 
-// ssh:state
 export interface SshStateEvent {
   session_id: string;
   state: string;
 }
 
-// ssh:error
 export interface SshErrorEvent {
   session_id: string;
   error: string;
 }
 
-// ssh:channel-event
 export interface SshChannelEvent {
   session_id: string;
   channel_id: string;
   event_type: string;
 }
 
-// ssh:exit-status
 export interface SshExitStatusEvent {
   session_id: string;
   channel_id: string;

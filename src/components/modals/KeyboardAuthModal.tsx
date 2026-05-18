@@ -31,7 +31,11 @@ export function KeyboardAuthModal() {
 
   const handleCancel = () => {
     invoke("ssh_disconnect", { sessionId: modal.sessionId }).catch(() => {});
-    removeTab(modal.sessionId);
+    const store = useTerminalStore.getState();
+    const sessionTabs = store.getTabsBySessionId(modal.sessionId);
+    for (const tab of sessionTabs) {
+      removeTab(tab.tabId);
+    }
     hideKeyboardAuthModal();
   };
 

@@ -2,54 +2,76 @@ import { Terminal } from "xterm";
 
 class TerminalManager {
   private terminals = new Map<string, Terminal>();
+  private channelToTab = new Map<string, string>();
   private pendingOutput = new Map<string, Uint8Array[]>();
 
-  register(sessionId: string, terminal: Terminal): void {
-    this.terminals.set(sessionId, terminal);
+  register(tabId: string, terminal: Terminal): void {
+    this.terminals.set(tabId, terminal);
 
-    // Flush any pending output
-    const pending = this.pendingOutput.get(sessionId);
+    const pending = this.pendingOutput.get(tabId);
     if (pending) {
       for (const data of pending) {
         terminal.write(data);
       }
-      this.pendingOutput.delete(sessionId);
+      this.pendingOutput.delete(tabId);
     }
   }
 
-  unregister(sessionId: string): void {
-    const term = this.terminals.get(sessionId);
-    if (term) {
-      term.dispose();
-      this.terminals.delete(sessionId);
+  unregister(tabId: string): void {
+    this.terminals.delete(tabId);
+    for (const [chId, tId] of this.channelToTab) {
+      if (tId === tabId) this.channelToTab.delete(chId);
     }
-    this.pendingOutput.delete(sessionId);
+    this.pendingOutput.delete(tabId);
   }
 
-  write(sessionId: string, data: Uint8Array): void {
-    const term = this.terminals.get(sessionId);
+  setChannelId(tabId: string, channelId: string): void {
+    this.channelToTab.set(channelId, tabId);
+    const pending = this.pendingOutput.get(channelId);
+    if (pending) {
+      const term = this.terminals.get(tabId);
+      if (term) {
+        for (const data of pending) term.write(data);
+      }
+      this.pendingOutput.delete(channelId);
+    }
+  }
+
+  writeByChannel(channelId: string, data: Uint8Array): void {
+    const tabId = this.channelToTab.get(channelId);
+    if (tabId) {
+      const term = this.terminals.get(tabId);
+      if (term) {
+        term.write(data);
+        return;
+      }
+    }
+    const buffered = this.pendingOutput.get(channelId) || [];
+    buffered.push(data);
+    this.pendingOutput.set(channelId, buffered);
+  }
+
+  write(tabId: string, data: Uint8Array): void {
+    const term = this.terminals.get(tabId);
     if (term) {
       term.write(data);
-    } else {
-      // Buffer output until terminal is registered
-      const buffered = this.pendingOutput.get(sessionId) || [];
-      buffered.push(data);
-      this.pendingOutput.set(sessionId, buffered);
+      return;
     }
+    const buffered = this.pendingOutput.get(tabId) || [];
+    buffered.push(data);
+    this.pendingOutput.set(tabId, buffered);
   }
 
-  resize(sessionId: string, cols: number, rows: number): void {
-    const term = this.terminals.get(sessionId);
-    if (term) {
-      term.resize(cols, rows);
-    }
+  getTabIdByChannel(channelId: string): string | undefined {
+    return this.channelToTab.get(channelId);
   }
 
-  focus(sessionId: string): void {
-    const term = this.terminals.get(sessionId);
-    if (term) {
-      term.focus();
-    }
+  focus(tabId: string): void {
+    this.terminals.get(tabId)?.focus();
+  }
+
+  getTerminal(tabId: string): Terminal | undefined {
+    return this.terminals.get(tabId);
   }
 }
 

@@ -12,6 +12,12 @@ use tokio::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Serialize)]
+pub struct ChannelOutput {
+    pub channel_id: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Serialize)]
 pub struct HostKeyUnknownPayload {
     pub session_id: String,
     pub key_type: String,
@@ -55,7 +61,7 @@ fn spawn_event_forwarder(
     session_id: Uuid,
     mut event_rx: tokio::sync::mpsc::UnboundedReceiver<FRCEvent>,
     auth_state: Arc<Mutex<SessionAuthState>>,
-    output_channel: Channel<Vec<u8>>,
+    output_channel: Channel<ChannelOutput>,
 ) {
     let sid = session_id.to_string();
     tokio::spawn(async move {
@@ -88,8 +94,11 @@ fn spawn_event_forwarder(
                     };
                     let _ = app_handle.emit("ssh:keyboard-auth", &payload);
                 }
-                FRCEvent::Output(_channel_id, data) => {
-                    let _ = output_channel.send(data.to_vec());
+                FRCEvent::Output(channel_id, data) => {
+                    let _ = output_channel.send(ChannelOutput {
+                        channel_id: channel_id.to_string(),
+                        data: data.to_vec(),
+                    });
                 }
                 FRCEvent::State(state) => {
                     let state_str = match state {
@@ -159,8 +168,11 @@ fn spawn_event_forwarder(
                     };
                     let _ = app_handle.emit("ssh:channel-event", &payload);
                 }
-                FRCEvent::ExtendedData { channel: _, data, ext: _ } => {
-                    let _ = output_channel.send(data.to_vec());
+                FRCEvent::ExtendedData { channel, data, ext: _ } => {
+                    let _ = output_channel.send(ChannelOutput {
+                        channel_id: channel.to_string(),
+                        data: data.to_vec(),
+                    });
                 }
                 FRCEvent::ConnectionError(err) => {
                     let payload = SshErrorPayload {
@@ -218,7 +230,7 @@ fn build_ssh_options(
 pub async fn ssh_connect(
     app_handle: AppHandle,
     server_id: String,
-    output_channel: Channel<Vec<u8>>,
+    output_channel: Channel<ChannelOutput>,
 ) -> Result<String, String> {
     let services = crate::FAO_SERVICES.lock().await.clone();
 

@@ -29,13 +29,18 @@ export function QuickCommands() {
     const tab = tabs.get(activeTabId);
     if (!tab || !tab.channelId) return;
 
+    const expanded = cmd.replace(/\\n/g, "\n");
+    const lines = expanded.split("\n");
     const encoder = new TextEncoder();
-    const data = Array.from(encoder.encode(cmd + "\n"));
-    invoke("ssh_send_data", {
-      sessionId: tab.sessionId,
-      channelId: tab.channelId,
-      data,
-    }).catch(console.error);
+
+    lines.forEach((line) => {
+      const data = Array.from(encoder.encode(line + "\r"));
+      invoke("ssh_send_data", {
+        sessionId: tab.sessionId,
+        channelId: tab.channelId,
+        data,
+      }).catch(console.error);
+    });
   };
 
   const entries = Object.entries(quickCommands);
@@ -55,11 +60,11 @@ export function QuickCommands() {
           className="quick-command-item"
           onClick={() => sendCommand(cmd)}
           disabled={!activeTabId}
-          title={activeTabId ? `Send: ${cmd}` : "No active terminal"}
+          title={activeTabId ? `Send: ${cmd.replace(/\\n/g, " ↵ ")}` : "No active terminal"}
         >
           <div className="quick-command-info">
             <span className="quick-command-desc">{desc}</span>
-            <code className="quick-command-cmd">{cmd}</code>
+            <code className="quick-command-cmd">{cmd.replace(/\\n/g, " ↵\n")}</code>
           </div>
           <button
             className="btn-icon btn-icon--sm btn-icon--danger"
@@ -93,15 +98,19 @@ export function QuickCommands() {
               if (e.key === "Escape") setShowAdd(false);
             }}
           />
-          <input
-            className="input input--sm"
-            placeholder="Command"
+          <textarea
+            className="input input--sm quick-command-textarea"
+            placeholder="Command (use \n for multiple lines)"
             value={newCmd}
             onChange={(e) => setNewCmd(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleAdd();
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleAdd();
+              }
               if (e.key === "Escape") setShowAdd(false);
             }}
+            rows={3}
           />
           <div className="quick-command-add-actions">
             <button className="btn btn--sm btn--primary" onClick={handleAdd}>

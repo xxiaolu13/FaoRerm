@@ -1,22 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { useServerStore } from "../stores/serverStore";
 import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
+import { toast } from "../stores/toastStore";
 import { terminalManager } from "../terminal/terminalManager";
+import type { ChannelOutput } from "../types";
 
 export function ServerList() {
   const servers = useServerStore((s) => s.servers);
   const loadServers = useServerStore((s) => s.loadServers);
   const deleteServer = useServerStore((s) => s.deleteServer);
-
+  const showServerModal = useUIStore((s) => s.showServerModal);
+  const checkMasterPassword = useServerStore((s) => s.checkMasterPassword);
+  const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
+  const selectedServerId = useUIStore((s) => s.selectedServerId);
+  const setSelectedServerId = useUIStore((s) => s.setSelectedServerId);
   const addTab = useTerminalStore((s) => s.addTab);
   const setChannel = useTerminalStore((s) => s.setChannel);
-  const showServerModal = useUIStore((s) => s.showServerModal);
-  const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
-  const checkMasterPassword = useServerStore((s) => s.checkMasterPassword);
-
-  const [connecting, setConnecting] = useState<string | null>(null);
+  const tabs = useTerminalStore((s) => s.tabs);
+  const tabOrder = useTerminalStore((s) => s.tabOrder);
 
   useEffect(() => {
     checkMasterPassword().then(() => {
@@ -24,52 +27,54 @@ export function ServerList() {
     });
   }, []);
 
-  const handleConnect = async (serverId: string, serverName: string, host: string) => {
-    if (!masterPasswordSet) return;
-
-    setConnecting(serverId);
-    try {
-      const channel = new Channel<number[]>();
-      const outputBuffer: number[][] = [];
-      let resolvedSessionId: string | null = null;
-
-      channel.onmessage = (data) => {
-        if (resolvedSessionId) {
-          terminalManager.write(resolvedSessionId, new Uint8Array(data));
-        } else {
-          outputBuffer.push(data);
-        }
-      };
-
-      const sessionId = await invoke<string>("ssh_connect", { serverId, outputChannel: channel });
-      resolvedSessionId = sessionId;
-
-      for (const data of outputBuffer) {
-        terminalManager.write(sessionId, new Uint8Array(data));
-      }
-      outputBuffer.length = 0;
-
-      setChannel(sessionId, channel);
-      addTab({
-        sessionId,
-        serverId,
-        serverName,
-        host,
-        channelId: "",
-        status: "connecting",
-      });
-    } catch (err) {
-      console.error("Connect failed:", err);
-    } finally {
-      setConnecting(null);
-    }
-  };
-
   const handleDelete = async (serverId: string) => {
     try {
       await deleteServer(serverId);
+      if (selectedServerId === serverId) setSelectedServerId(null);
     } catch (err) {
       console.error("Delete failed:", err);
+    }
+  };
+
+  const handleConnect = async (serverId: string) => {
+    const server = servers[serverId];
+    if (!server) return;
+
+    if (!masterPasswordSet) {
+      toast("Master password required", { variant: "warning" });
+      return;
+    }
+
+    toast("Connecting...", { description: `Establishing SSH session to ${server.host}`, variant: "default" });
+
+    try {
+      const tabId = crypto.randomUUID();
+      const channel = new Channel<ChannelOutput>();
+
+      channel.onmessage = (output: ChannelOutput) => {
+        terminalManager.writeByChannel(output.channel_id, new Uint8Array(output.data));
+      };
+
+      const sessionId = await invoke<string>("ssh_connect", {
+        serverId,
+        outputChannel: channel,
+      });
+
+      setChannel(sessionId, channel);
+
+      addTab({
+        tabId,
+        sessionId,
+        serverId,
+        serverName: serverId,
+        host: server.host,
+        channelId: "",
+        status: "connecting",
+      });
+
+      toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
+    } catch (err) {
+      toast("Connection failed", { description: String(err), variant: "error" });
     }
   };
 
@@ -108,87 +113,81 @@ export function ServerList() {
       )}
 
       <div className="server-items">
-        {serverEntries.map(([id, server]) => (
-          <div key={id} className="server-item">
-            <button
-              className="server-connect"
-              onClick={() => handleConnect(id, id, server.host)}
-              disabled={connecting === id || !masterPasswordSet}
-              title={
-                !masterPasswordSet
-                  ? "Unlock master password first"
-                  : `Connect to ${server.host}`
-              }
+        {serverEntries.map(([id, server]) => {
+          const isActive = tabOrder.some((tid) => {
+            const t = tabs.get(tid);
+            return t?.serverId === id && (t.status === "connected" || t.status === "connecting");
+          });
+
+          return (
+            <div
+              key={id}
+              className={`server-item ${selectedServerId === id ? "server-item--selected" : ""}`}
             >
-              <span className="server-icon">
-                {connecting === id ? (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    className="spinner"
-                  >
-                    <circle
-                      cx="7"
-                      cy="7"
-                      r="5.5"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeDasharray="28"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                ) : (
+              <button
+                className="server-connect"
+                onClick={() => setSelectedServerId(id)}
+                title={`View ${server.host}`}
+              >
+                <span className={`server-icon ${isActive ? "server-icon--active" : ""}`}>
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path
-                      d="M2 2L12 7L2 12V2Z"
-                      fill="currentColor"
-                    />
+                    <rect x="2" y="3" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                    <rect x="2" y="8" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
                   </svg>
-                )}
-              </span>
-              <div className="server-info">
-                <span className="server-name">{id}</span>
-                <span className="server-detail">
-                  {server.user}@{server.host}:{server.port}
                 </span>
-              </div>
-            </button>
+                <div className="server-info">
+                  <span className="server-name">{id}</span>
+                  <span className="server-detail">
+                    {server.user}@{server.host}:{server.port}
+                  </span>
+                </div>
+              </button>
 
-            <button
-              className="btn-icon btn-icon--sm"
-              onClick={() => showServerModal("edit", server)}
-              title="Edit server"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M10.5 1.5L12.5 3.5L4.5 11.5L1.5 12.5L2.5 9.5L10.5 1.5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
+              <button
+                className="btn-icon btn-icon--sm server-connect-btn"
+                onClick={() => handleConnect(id)}
+                disabled={!masterPasswordSet || isActive}
+                title={isActive ? "Already connected" : "Connect"}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 2L12 7L2 12V2Z" fill="currentColor" />
+                </svg>
+              </button>
 
-            <button
-              className="btn-icon btn-icon--sm btn-icon--danger"
-              onClick={() => handleDelete(id)}
-              title="Delete server"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M3 4.5H11M5.5 4.5V3C5.5 2.724 5.724 2.5 6 2.5H8C8.276 2.5 8.5 2.724 8.5 3V4.5M6 7V10.5M8 7V10.5M2.5 4.5L3.5 11.5H10.5L11.5 4.5"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-        ))}
+              <button
+                className="btn-icon btn-icon--sm"
+                onClick={() => showServerModal("edit", server)}
+                title="Edit server"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path
+                    d="M10.5 1.5L12.5 3.5L4.5 11.5L1.5 12.5L2.5 9.5L10.5 1.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
+              <button
+                className="btn-icon btn-icon--sm btn-icon--danger"
+                onClick={() => handleDelete(id)}
+                title="Delete server"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path
+                    d="M3 4.5H11M5.5 4.5V3C5.5 2.724 5.724 2.5 6 2.5H8C8.276 2.5 8.5 2.724 8.5 3V4.5M6 7V10.5M8 7V10.5M2.5 4.5L3.5 11.5H10.5L11.5 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

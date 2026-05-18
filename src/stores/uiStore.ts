@@ -28,7 +28,19 @@ interface UIStore {
 
   lockScreenActive: boolean;
 
-  activeSection: "servers" | "commands" | "settings";
+  activeSection: "servers" | "management";
+
+  managementTab: "commands" | "blacklist" | "settings";
+
+  selectedServerId: string | null;
+
+  contextMenu: {
+    x: number;
+    y: number;
+    tabId: string;
+    sessionId: string;
+    serverId: string;
+  } | null;
 
   showHostKeyModal: (
     sessionId: string,
@@ -49,7 +61,17 @@ interface UIStore {
   setRightDrawerOpen: (open: boolean) => void;
   activateLockScreen: () => void;
   deactivateLockScreen: () => void;
-  setActiveSection: (section: "servers" | "commands" | "settings") => void;
+  setActiveSection: (section: "servers" | "management") => void;
+  setManagementTab: (tab: "commands" | "blacklist" | "settings") => void;
+  setSelectedServerId: (id: string | null) => void;
+  showContextMenu: (
+    x: number,
+    y: number,
+    tabId: string,
+    sessionId: string,
+    serverId: string,
+  ) => void;
+  hideContextMenu: () => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -62,6 +84,9 @@ export const useUIStore = create<UIStore>((set) => ({
   rightDrawerOpen: false,
   lockScreenActive: false,
   activeSection: "servers",
+  managementTab: "commands",
+  selectedServerId: null,
+  contextMenu: null,
 
   showHostKeyModal: (sessionId, keyType, fingerprint) =>
     set({ hostKeyModal: { sessionId, keyType, fingerprint } }),
@@ -91,11 +116,16 @@ export const useUIStore = create<UIStore>((set) => ({
     set((state) => {
       const isSameSection = state.activeSection === section;
       if (section === "servers") {
-        return { activeSection: section, sidebarCollapsed: isSameSection ? !state.sidebarCollapsed : false };
-      }
-      if (section === "commands") {
-        return { activeSection: section, rightDrawerOpen: isSameSection ? !state.rightDrawerOpen : true };
+        return {
+          activeSection: section,
+          sidebarCollapsed: isSameSection ? !state.sidebarCollapsed : false,
+        };
       }
       return { activeSection: section };
     }),
+  setManagementTab: (tab) => set({ managementTab: tab }),
+  setSelectedServerId: (id) => set({ selectedServerId: id }),
+  showContextMenu: (x, y, tabId, sessionId, serverId) =>
+    set({ contextMenu: { x, y, tabId, sessionId, serverId } }),
+  hideContextMenu: () => set({ contextMenu: null }),
 }));
