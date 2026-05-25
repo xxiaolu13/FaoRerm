@@ -135,6 +135,21 @@ impl client::Handler for FaoClientHandler{
                     .map_err(|_| FaoClientHandlerError::Internal)?;
                 let accepted = rx.await
                     .map_err(|_| FaoClientHandlerError::Internal)?;
+                if accepted {
+                    let key_base64 = server_public_key.public_key_base64();
+                    match crate::client::key::encrypt_server_public_key(&user_password, &key_base64) {
+                        Ok(encrypted) => {
+                            if let Err(e) = self.services.config.update_server_public_key(&self.ssh_options.name, encrypted) {
+                                error!(server = %self.ssh_options.name, error = ?e, "Failed to save server public key");
+                            } else {
+                                info!(server = %self.ssh_options.name, "Server public key saved");
+                            }
+                        }
+                        Err(e) => {
+                            error!(server = %self.ssh_options.name, error = ?e, "Failed to encrypt server public key");
+                        }
+                    }
+                }
                 Ok(accepted)
             }
         }

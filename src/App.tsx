@@ -14,6 +14,7 @@ import { Toaster } from "./components/Toaster";
 import { ServerModal } from "./components/modals/ServerModal";
 import { MasterPasswordModal } from "./components/modals/MasterPasswordModal";
 import { BlacklistModal } from "./components/modals/BlacklistModal";
+import { ZmodemTransferBar, ZmodemEventHandler } from "./components/ZmodemTransferBar";
 import { toast } from "./stores/toastStore";
 import { terminalManager } from "./terminal/terminalManager";
 import "./App.css";
@@ -327,10 +328,12 @@ export default function App() {
   return (
     <div className="app">
       <GlobalKeyboardShortcuts />
+      <ZmodemEventHandler />
       <ActivityBar />
       <Sidebar />
       <main className="main-content">
         <TabBar />
+        <ZmodemTransferBar />
         <TerminalArea />
         <RightDrawerToggle />
       </main>

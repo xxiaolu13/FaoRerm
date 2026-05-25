@@ -1,7 +1,7 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod service;
 mod client;
 mod enter;
+mod zmodem;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
@@ -22,6 +22,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             // CRUD
@@ -47,6 +48,10 @@ pub fn run() {
             ssh_resize_pty,
             ssh_confirm_host_key,
             ssh_respond_keyboard_auth,
+            // Zmodem
+            zmodem_provide_files,
+            zmodem_provide_save_path,
+            zmodem_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

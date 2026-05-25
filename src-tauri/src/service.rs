@@ -153,6 +153,18 @@ impl ConfigManager {
         self.save()
     }
 
+    pub fn update_server_public_key(&self, key: &str, encrypted_key: String) -> Result<(), ConfigError> {
+        let mut guard = self.data.write();
+        if let Some(server) = guard.server.get_mut(key) {
+            server.server_public_key = Some(encrypted_key);
+            drop(guard);
+            self.save()
+        } else {
+            drop(guard);
+            Err(ConfigError::ServerNotFound(key.to_string()))
+        }
+    }
+
 
     pub fn get_server(&self, key: &str) -> Option<ServerConfig> {
         self.data.read().server.get(key).cloned()
@@ -218,6 +230,8 @@ impl SessionRecordings{
         }
     }
 }
+use crate::zmodem::ZmodemSession;
+
 #[derive(Clone)]
 pub struct Services {
     pub handles: Arc<Mutex<HashMap<String, SessionHandles>>>,
@@ -225,6 +239,7 @@ pub struct Services {
     pub recordings: Arc<Mutex<SessionRecordings>>,
     pub config: ConfigManager,
     pub master_password: Arc<Mutex<Option<String>>>,
+    pub zmodem_sessions: Arc<Mutex<HashMap<String, ZmodemSession>>>,
 }
 
 impl Services {
@@ -245,6 +260,7 @@ impl Services {
             recordings,
             config: cm.clone(),
             master_password: Arc::new(Mutex::new(None)),
+            zmodem_sessions: Arc::new(Mutex::new(HashMap::new())),
         })
     }
     

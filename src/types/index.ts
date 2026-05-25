@@ -67,3 +67,31 @@ export type SshEventKind =
   | { type: "channel_failure" }
   | { type: "exit_status"; exit_status: number }
   | { type: "exit_signal"; signal_name: string; core_dumped: boolean; error_message: string; lang_tag: string };
+
+export interface ZmodemStartEvent {
+  channel_id: string;
+  direction: string;
+}
+
+export interface ZmodemProgress {
+  channel_id: string;
+  direction: string;
+  filename: string;
+  transferred: number;
+  total: number;
+}
+
+export interface ZmodemCompleteEvent {
+  channel_id: string;
+  direction: string;
+  success: boolean;
+}
+
+export interface ZmodemTransferState {
+  channelId: string;
+  direction: "upload" | "download";
+  filename: string;
+  transferred: number;
+  total: number;
+  active: boolean;
+}

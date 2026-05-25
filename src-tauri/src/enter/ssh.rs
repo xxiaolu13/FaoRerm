@@ -2,8 +2,10 @@ use crate::client::domain::*;
 use crate::client::common::*;
 use crate::client::key::*;
 use crate::service::{ServerConfig, AuthMethod, SessionHandles, SessionAuthState};
+use crate::zmodem::{self, ZmodemSession, ZmodemStartEvent};
 use russh::keys::PublicKeyBase64;
 use serde::Serialize;
+use std::path::PathBuf;
 use tauri::ipc::Channel;
 use tracing::*;
 use uuid::Uuid;
@@ -93,8 +95,50 @@ fn spawn_event_forwarder(
                     emit(&app_handle, &sid, None, SshEventKind::KeyboardAuth { prompt });
                 }
                 FRCEvent::Output(channel_id, data) => {
+                    let ch_str = channel_id.to_string();
+                    let services = crate::FAO_SERVICES.lock().await;
+                    let zmodem_guard = services.zmodem_sessions.lock().await;
+                    if let Some(zsession) = zmodem_guard.get(&ch_str) {
+                        let _ = zsession.send_data(data.to_vec());
+                        continue;
+                    }
+                    drop(zmodem_guard);
+                    drop(services);
+
+                    if let Some(direction) = zmodem::detect_zmodem(&data) {
+                        info!(channel = %ch_str, direction = %direction, "Zmodem detected");
+                        let services = crate::FAO_SERVICES.lock().await;
+                        let handles_guard = services.handles.lock().await;
+                        if let Some(session_handles) = handles_guard.get(&sid) {
+                            let command_tx = session_handles.command_tx.clone();
+                            let ch_id = channel_id;
+                            let zsession = if direction == "upload" {
+                                zmodem::spawn_upload_session(
+                                    app_handle.clone(),
+                                    ch_id,
+                                    command_tx,
+                                    data.to_vec(),
+                                )
+                            } else {
+                                zmodem::spawn_download_session(
+                                    app_handle.clone(),
+                                    ch_id,
+                                    command_tx,
+                                    data.to_vec(),
+                                )
+                            };
+
+                            services.zmodem_sessions.lock().await.insert(ch_str.clone(), zsession);
+                            let _ = app_handle.emit("zmodem:start", ZmodemStartEvent {
+                                channel_id: ch_str.clone(),
+                                direction: direction.to_string(),
+                            });
+                        }
+                        continue;
+                    }
+
                     let _ = output_channel.send(ChannelOutput {
-                        channel_id: channel_id.to_string(),
+                        channel_id: ch_str,
                         data: data.to_vec(),
                     });
                 }
@@ -354,6 +398,14 @@ pub async fn ssh_send_data(
     data: Vec<u8>,
 ) -> Result<(), String> {
     let services = crate::FAO_SERVICES.lock().await;
+    let zmodem_guard = services.zmodem_sessions.lock().await;
+    if zmodem_guard.contains_key(&channel_id) {
+        return Ok(());
+    }
+    drop(zmodem_guard);
+    drop(services);
+
+    let services = crate::FAO_SERVICES.lock().await;
     let handles_guard = services.handles.clone();
     let guard = handles_guard.lock().await;
 
@@ -440,5 +492,43 @@ pub async fn ssh_respond_keyboard_auth(
         return Err("No pending keyboard-interactive auth".to_string());
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn zmodem_provide_files(
+    channel_id: String,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let file_paths: Vec<PathBuf> = paths.iter().map(|p| PathBuf::from(p)).collect();
+    let services = crate::FAO_SERVICES.lock().await;
+    let zmodem_guard = services.zmodem_sessions.lock().await;
+    let zsession = zmodem_guard.get(&channel_id)
+        .ok_or(format!("No zmodem session for channel '{}'", channel_id))?;
+    zsession.provide_files(file_paths)
+}
+
+#[tauri::command]
+pub async fn zmodem_provide_save_path(
+    channel_id: String,
+    path: String,
+) -> Result<(), String> {
+    let save_path = PathBuf::from(&path);
+    let services = crate::FAO_SERVICES.lock().await;
+    let zmodem_guard = services.zmodem_sessions.lock().await;
+    let zsession = zmodem_guard.get(&channel_id)
+        .ok_or(format!("No zmodem session for channel '{}'", channel_id))?;
+    zsession.provide_save_path(save_path)
+}
+
+#[tauri::command]
+pub async fn zmodem_cancel(
+    channel_id: String,
+) -> Result<(), String> {
+    let services = crate::FAO_SERVICES.lock().await;
+    let mut zmodem_guard = services.zmodem_sessions.lock().await;
+    if let Some(zsession) = zmodem_guard.remove(&channel_id) {
+        let _ = zsession.cancel();
+    }
     Ok(())
 }

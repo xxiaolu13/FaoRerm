@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useTerminalStore } from "./terminalStore";
-import type { ServerConfig } from "../types";
+import type { ServerConfig, ZmodemTransferState } from "../types";
 
 interface UIStore {
   hostKeyModal: {
@@ -43,6 +43,8 @@ interface UIStore {
     serverId: string;
   } | null;
 
+  zmodemTransfers: Map<string, ZmodemTransferState>;
+
   showHostKeyModal: (
     sessionId: string,
     keyType: string,
@@ -73,6 +75,9 @@ interface UIStore {
     serverId: string,
   ) => void;
   hideContextMenu: () => void;
+  addZmodemTransfer: (transfer: ZmodemTransferState) => void;
+  updateZmodemTransfer: (channelId: string, update: Partial<ZmodemTransferState>) => void;
+  removeZmodemTransfer: (channelId: string) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -88,6 +93,7 @@ export const useUIStore = create<UIStore>((set) => ({
   managementTab: "commands",
   selectedServerId: null,
   contextMenu: null,
+  zmodemTransfers: new Map(),
 
   showHostKeyModal: (sessionId, keyType, fingerprint) =>
     set({ hostKeyModal: { sessionId, keyType, fingerprint } }),
@@ -130,4 +136,26 @@ export const useUIStore = create<UIStore>((set) => ({
   showContextMenu: (x, y, tabId, sessionId, serverId) =>
     set({ contextMenu: { x, y, tabId, sessionId, serverId } }),
   hideContextMenu: () => set({ contextMenu: null }),
+
+  addZmodemTransfer: (transfer) =>
+    set((state) => {
+      const newMap = new Map(state.zmodemTransfers);
+      newMap.set(transfer.channelId, transfer);
+      return { zmodemTransfers: newMap };
+    }),
+  updateZmodemTransfer: (channelId, update) =>
+    set((state) => {
+      const newMap = new Map(state.zmodemTransfers);
+      const existing = newMap.get(channelId);
+      if (existing) {
+        newMap.set(channelId, { ...existing, ...update });
+      }
+      return { zmodemTransfers: newMap };
+    }),
+  removeZmodemTransfer: (channelId) =>
+    set((state) => {
+      const newMap = new Map(state.zmodemTransfers);
+      newMap.delete(channelId);
+      return { zmodemTransfers: newMap };
+    }),
 }));
