@@ -88,6 +88,7 @@ fn send_to_channel(
     channel_id: Uuid,
     data: &[u8],
 ) {
+    info!(channel_id = %channel_id, data_len = data.len(), "ZMODEM TX: sending data to SSH channel");
     let _ = command_tx.send((
         FRCCommand::Channel(channel_id, ChannelOperation::Data(data.to_vec().into())),
         None,
@@ -95,6 +96,7 @@ fn send_to_channel(
 }
 
 fn emit_progress(app: &AppHandle, channel_id: &str, direction: &str, filename: &str, transferred: u64, total: u64) {
+    info!(channel_id = %channel_id, direction = %direction, filename = %filename, transferred, total, "ZMODEM PROGRESS");
     let _ = app.emit("zmodem:progress", ZmodemProgress {
         channel_id: channel_id.to_string(),
         direction: direction.to_string(),
@@ -105,6 +107,7 @@ fn emit_progress(app: &AppHandle, channel_id: &str, direction: &str, filename: &
 }
 
 fn emit_complete(app: &AppHandle, channel_id: &str, direction: &str, success: bool) {
+    info!(channel_id = %channel_id, direction = %direction, success, "ZMODEM COMPLETE");
     let _ = app.emit("zmodem:complete", ZmodemCompleteEvent {
         channel_id: channel_id.to_string(),
         direction: direction.to_string(),
@@ -128,12 +131,16 @@ pub fn spawn_upload_session(
 
     let ch_str = channel_id.to_string();
     let _handle = tokio::spawn(async move {
+        info!(channel = %ch_str, initial_data_len = initial_data.len(), "ZMODEM UPLOAD: session spawned");
+
         let mut files_to_send: Vec<PathBuf> = Vec::new();
         let mut waiting_for_files = true;
+        let mut buffered_data: Vec<u8> = Vec::new();
 
         while waiting_for_files {
             match input_rx.recv().await {
                 Some(ZmodemInput::FilesSelected(paths)) => {
+                    info!(channel = %ch_str, count = paths.len(), "ZMODEM UPLOAD: files selected");
                     files_to_send = paths;
                     waiting_for_files = false;
                 }
@@ -145,7 +152,8 @@ pub fn spawn_upload_session(
                     return;
                 }
                 Some(ZmodemInput::Data(d)) => {
-                    let _ = d;
+                    info!(channel = %ch_str, data_len = d.len(), "ZMODEM UPLOAD: buffering data while waiting for files");
+                    buffered_data.extend_from_slice(&d);
                 }
                 Some(ZmodemInput::SavePathSelected(_)) => {}
             }
@@ -159,7 +167,10 @@ pub fn spawn_upload_session(
         }
 
         let mut sender = match zmodem2::Sender::new() {
-            Ok(s) => s,
+            Ok(s) => {
+                info!(channel = %ch_str, "ZMODEM UPLOAD: Sender created");
+                s
+            }
             Err(e) => {
                 error!(channel = %ch_str, error = ?e, "Failed to create zmodem sender");
                 emit_complete(&app_handle, &ch_str, "upload", false);
@@ -168,19 +179,28 @@ pub fn spawn_upload_session(
         };
 
         let out = sender.drain_outgoing();
-        sender.advance_outgoing(out.len());
+        if !out.is_empty() {
+            info!(channel = %ch_str, out_len = out.len(), "ZMODEM UPLOAD: sending ZRQINIT");
+            let out_len = out.len();
+            send_to_channel(&command_tx, channel_id, out);
+            sender.advance_outgoing(out_len);
+        } else {
+            warn!(channel = %ch_str, "ZMODEM UPLOAD: Sender::new() produced no outgoing data!");
+        }
 
         if !initial_data.is_empty() {
+            info!(channel = %ch_str, data_len = initial_data.len(), "ZMODEM UPLOAD: feeding initial_data to sender");
             let mut remaining = initial_data.as_slice();
             while !remaining.is_empty() {
                 let consumed = match sender.feed_incoming(remaining) {
                     Ok(n) => n,
                     Err(e) => {
-                        error!(channel = %ch_str, error = ?e, "Failed to feed initial data to sender");
+                        error!(channel = %ch_str, error = ?e, remaining_len = remaining.len(), "Failed to feed initial data to sender");
                         emit_complete(&app_handle, &ch_str, "upload", false);
                         return;
                     }
                 };
+                info!(channel = %ch_str, consumed, remaining_len = remaining.len(), "ZMODEM UPLOAD: feed_incoming consumed from initial_data");
                 if consumed == 0 {
                     break;
                 }
@@ -188,6 +208,33 @@ pub fn spawn_upload_session(
 
                 let out = sender.drain_outgoing();
                 if !out.is_empty() {
+                    info!(channel = %ch_str, out_len = out.len(), "ZMODEM UPLOAD: sending outgoing after feed_incoming(initial_data)");
+                    send_to_channel(&command_tx, channel_id, out);
+                    sender.advance_outgoing(out.len());
+                }
+            }
+        }
+
+        if !buffered_data.is_empty() {
+            info!(channel = %ch_str, data_len = buffered_data.len(), "ZMODEM UPLOAD: feeding buffered_data to sender");
+            let mut remaining = buffered_data.as_slice();
+            while !remaining.is_empty() {
+                let consumed = match sender.feed_incoming(remaining) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        error!(channel = %ch_str, error = ?e, "Failed to feed buffered data to sender");
+                        break;
+                    }
+                };
+                info!(channel = %ch_str, consumed, "ZMODEM UPLOAD: feed_incoming consumed from buffered_data");
+                if consumed == 0 {
+                    break;
+                }
+                remaining = &remaining[consumed..];
+
+                let out = sender.drain_outgoing();
+                if !out.is_empty() {
+                    info!(channel = %ch_str, out_len = out.len(), "ZMODEM UPLOAD: sending outgoing after feed_incoming(buffered_data)");
                     send_to_channel(&command_tx, channel_id, out);
                     sender.advance_outgoing(out.len());
                 }
@@ -196,6 +243,7 @@ pub fn spawn_upload_session(
 
         let out = sender.drain_outgoing();
         if !out.is_empty() {
+            info!(channel = %ch_str, out_len = out.len(), "ZMODEM UPLOAD: sending remaining outgoing before file loop");
             send_to_channel(&command_tx, channel_id, out);
             sender.advance_outgoing(out.len());
         }
@@ -213,6 +261,8 @@ pub fn spawn_upload_session(
                 }
             };
 
+            info!(channel = %ch_str, file = %file_name, size = file_size, "ZMODEM UPLOAD: starting file");
+
             let file_name_bytes = file_name.as_bytes();
             if let Err(e) = sender.start_file(file_name_bytes, file_size) {
                 error!(channel = %ch_str, error = ?e, "Failed to start file transfer");
@@ -221,8 +271,11 @@ pub fn spawn_upload_session(
 
             let out = sender.drain_outgoing();
             if !out.is_empty() {
+                info!(channel = %ch_str, out_len = out.len(), "ZMODEM UPLOAD: sending ZFILE header");
                 send_to_channel(&command_tx, channel_id, out);
                 sender.advance_outgoing(out.len());
+            } else {
+                warn!(channel = %ch_str, "ZMODEM UPLOAD: start_file produced no outgoing data!");
             }
 
             let mut file = match std::fs::File::open(file_path) {
@@ -236,11 +289,18 @@ pub fn spawn_upload_session(
             let mut transferred: u64 = 0;
             let total = file_size as u64;
             let mut file_done = false;
+            let mut loop_count: u64 = 0;
 
             emit_progress(&app_handle, &ch_str, "upload", &file_name, 0, total);
 
             while !file_done {
+                loop_count += 1;
+                if loop_count % 100 == 1 {
+                    info!(channel = %ch_str, loop_count, "ZMODEM UPLOAD: main loop iteration");
+                }
+
                 while let Some(req) = sender.poll_file() {
+                    info!(channel = %ch_str, offset = req.offset, len = req.len, "ZMODEM UPLOAD: poll_file returned request");
                     let mut buf = vec![0u8; req.len];
                     let n = match file.read(&mut buf) {
                         Ok(0) => 0,
@@ -290,68 +350,51 @@ pub fn spawn_upload_session(
                     break;
                 }
 
-                if sender.poll_file().is_none() && !sender.drain_outgoing().is_empty() {
+                if sender.poll_file().is_some() {
                     continue;
                 }
 
-                if sender.poll_file().is_none() && sender.drain_outgoing().is_empty() {
-                    tokio::select! {
-                        input = input_rx.recv() => {
-                            match input {
-                                Some(ZmodemInput::Data(data)) => {
-                                    let mut remaining = data.as_slice();
-                                    while !remaining.is_empty() {
-                                        let consumed = match sender.feed_incoming(remaining) {
-                                            Ok(n) => n,
-                                            Err(e) => {
-                                                error!(channel = %ch_str, error = ?e, "Feed incoming error");
-                                                break;
-                                            }
-                                        };
-                                        if consumed == 0 {
-                                            break;
-                                        }
-                                        remaining = &remaining[consumed..];
+                info!(channel = %ch_str, "ZMODEM UPLOAD: waiting for server input...");
+                match input_rx.recv().await {
+                    Some(ZmodemInput::Data(data)) => {
+                        info!(channel = %ch_str, data_len = data.len(), "ZMODEM UPLOAD: received data from server");
+                        let mut remaining = data.as_slice();
+                        while !remaining.is_empty() {
+                            let consumed = match sender.feed_incoming(remaining) {
+                                Ok(n) => n,
+                                Err(e) => {
+                                    error!(channel = %ch_str, error = ?e, "Feed incoming error");
+                                    break;
+                                }
+                            };
+                            if consumed == 0 {
+                                info!(channel = %ch_str, remaining_len = remaining.len(), "ZMODEM UPLOAD: feed_incoming consumed 0, breaking");
+                                break;
+                            }
+                            info!(channel = %ch_str, consumed, "ZMODEM UPLOAD: feed_incoming consumed");
+                            remaining = &remaining[consumed..];
 
-                                        let out = sender.drain_outgoing();
-                                        if !out.is_empty() {
-                                            send_to_channel(&command_tx, channel_id, out);
-                                            sender.advance_outgoing(out.len());
-                                        }
-                                    }
-                                }
-                                Some(ZmodemInput::Cancel) | None => {
-                                    info!(channel = %ch_str, "Zmodem upload cancelled");
-                                    let cancel_bytes = b"\x18\x18\x18\x18\x08\x08\x08\x08";
-                                    send_to_channel(&command_tx, channel_id, cancel_bytes);
-                                    emit_complete(&app_handle, &ch_str, "upload", false);
-                                    return;
-                                }
-                                _ => {}
+                            let out = sender.drain_outgoing();
+                            if !out.is_empty() {
+                                info!(channel = %ch_str, out_len = out.len(), "ZMODEM UPLOAD: sending outgoing after feed_incoming");
+                                send_to_channel(&command_tx, channel_id, out);
+                                sender.advance_outgoing(out.len());
                             }
                         }
                     }
-
-                    let out = sender.drain_outgoing();
-                    if !out.is_empty() {
-                        send_to_channel(&command_tx, channel_id, out);
-                        sender.advance_outgoing(out.len());
+                    Some(ZmodemInput::Cancel) | None => {
+                        info!(channel = %ch_str, "Zmodem upload cancelled");
+                        let cancel_bytes = b"\x18\x18\x18\x18\x08\x08\x08\x08";
+                        send_to_channel(&command_tx, channel_id, cancel_bytes);
+                        emit_complete(&app_handle, &ch_str, "upload", false);
+                        return;
                     }
-
-                    while let Some(event) = sender.poll_event() {
-                        match event {
-                            zmodem2::SenderEvent::FileComplete => {
-                                file_done = true;
-                            }
-                            zmodem2::SenderEvent::SessionComplete => {
-                                file_done = true;
-                            }
-                        }
-                    }
+                    _ => {}
                 }
             }
         }
 
+        info!(channel = %ch_str, "ZMODEM UPLOAD: finishing session");
         if let Err(e) = sender.finish_session() {
             error!(channel = %ch_str, error = ?e, "Finish session error");
         }
@@ -423,8 +466,13 @@ pub fn spawn_download_session(
 
     let ch_str = channel_id.to_string();
     let _handle = tokio::spawn(async move {
+        info!(channel = %ch_str, initial_data_len = initial_data.len(), "ZMODEM DOWNLOAD: session spawned");
+
         let mut receiver = match zmodem2::Receiver::new() {
-            Ok(r) => r,
+            Ok(r) => {
+                info!(channel = %ch_str, "ZMODEM DOWNLOAD: Receiver created");
+                r
+            }
             Err(e) => {
                 error!(channel = %ch_str, error = ?e, "Failed to create zmodem receiver");
                 emit_complete(&app_handle, &ch_str, "download", false);
@@ -435,12 +483,14 @@ pub fn spawn_download_session(
         {
             let out = receiver.drain_outgoing();
             if !out.is_empty() {
+                info!(channel = %ch_str, out_len = out.len(), "ZMODEM DOWNLOAD: sending initial outgoing (ZRINIT)");
                 send_to_channel(&command_tx, channel_id, out);
                 receiver.advance_outgoing(out.len());
             }
         }
 
         if !initial_data.is_empty() {
+            info!(channel = %ch_str, data_len = initial_data.len(), "ZMODEM DOWNLOAD: feeding initial_data to receiver");
             let mut remaining = initial_data.as_slice();
             while !remaining.is_empty() {
                 let consumed = match receiver.feed_incoming(remaining) {
@@ -450,6 +500,7 @@ pub fn spawn_download_session(
                         break;
                     }
                 };
+                info!(channel = %ch_str, consumed, "ZMODEM DOWNLOAD: feed_incoming consumed from initial_data");
                 if consumed == 0 {
                     break;
                 }
@@ -457,6 +508,7 @@ pub fn spawn_download_session(
 
                 let out = receiver.drain_outgoing();
                 if !out.is_empty() {
+                    info!(channel = %ch_str, out_len = out.len(), "ZMODEM DOWNLOAD: sending outgoing after feed_incoming");
                     send_to_channel(&command_tx, channel_id, out);
                     receiver.advance_outgoing(out.len());
                 }
@@ -522,6 +574,8 @@ pub fn spawn_download_session(
                         *current_filesize = receiver.file_size() as u64;
                         *transferred = 0;
 
+                        info!(channel = %ch_str, filename = %*current_filename, filesize = *current_filesize, "ZMODEM DOWNLOAD: FileStart event");
+
                         if let Some(ref sp) = save_path {
                             let file_path = if sp.is_dir() || sp.extension().is_none() {
                                 sp.join(&*current_filename)
@@ -536,89 +590,77 @@ pub fn spawn_download_session(
                             match std::fs::File::create(&file_path) {
                                 Ok(f) => {
                                     *current_file = Some(f);
-                                    info!(channel = %ch_str, file = %*current_filename, size = *current_filesize, "Starting download");
-                                    emit_progress(&app_handle, &ch_str, "download", current_filename, 0, *current_filesize);
+                                    *pending_file_start = false;
+                                    for data in buffered_file_data.drain(..) {
+                                        if let Some(ref mut file) = current_file {
+                                            if let Err(e) = file.write_all(&data) {
+                                                error!(channel = %ch_str, error = ?e, "Buffered data write error");
+                                            }
+                                            *transferred += data.len() as u64;
+                                        }
+                                    }
+                                    emit_progress(&app_handle, &ch_str, "download", current_filename, *transferred, *current_filesize);
                                 }
                                 Err(e) => {
-                                    error!(path = %file_path.display(), error = ?e, "Cannot create file");
+                                    error!(channel = %ch_str, path = %file_path.display(), error = ?e, "Cannot create file");
                                 }
                             }
                         } else {
                             *pending_file_start = true;
-                            buffered_file_data.clear();
-                            info!(channel = %ch_str, file = %*current_filename, "FileStart received, waiting for save path");
-                            emit_progress(&app_handle, &ch_str, "download", current_filename, 0, *current_filesize);
+                            info!(channel = %ch_str, "ZMODEM DOWNLOAD: no save_path yet, buffering file data");
                         }
                     }
                     zmodem2::ReceiverEvent::FileComplete => {
-                        if *pending_file_start && save_path.is_none() {
-                            *file_complete_pending = true;
-                            info!(channel = %ch_str, file = %*current_filename, "FileComplete received, waiting for save path");
-                        } else {
-                            if let Some(file) = current_file.take() {
-                                drop(file);
-                            }
-                            if *pending_file_start && save_path.is_some() {
-                                let sp = save_path.as_ref().unwrap();
-                                let file_path = if sp.is_dir() || sp.extension().is_none() {
-                                    sp.join(&*current_filename)
-                                } else {
-                                    sp.clone()
-                                };
-                                if let Some(parent) = file_path.parent() {
-                                    let _ = std::fs::create_dir_all(parent);
-                                }
-                                if let Ok(mut f) = std::fs::File::create(&file_path) {
-                                    for chunk in &*buffered_file_data {
-                                        let _ = f.write_all(chunk);
-                                    }
-                                    *transferred += buffered_file_data.iter().map(|c| c.len() as u64).sum::<u64>();
-                                }
-                                buffered_file_data.clear();
-                            }
-                            *pending_file_start = false;
-                            info!(channel = %ch_str, file = %*current_filename, "File download complete");
-                            if *current_filesize > 0 {
-                                emit_progress(&app_handle, &ch_str, "download", current_filename, *current_filesize, *current_filesize);
-                            } else {
-                                emit_progress(&app_handle, &ch_str, "download", current_filename, *transferred, *transferred);
-                            }
-                            current_filename.clear();
-                        }
+                        info!(channel = %ch_str, filename = %*current_filename, "ZMODEM DOWNLOAD: FileComplete event");
+                        *file_complete_pending = true;
                     }
                     zmodem2::ReceiverEvent::SessionComplete => {
-                        if *pending_file_start || *file_complete_pending {
-                            *session_complete_pending = true;
-                            info!(channel = %ch_str, "SessionComplete received, waiting for save path");
-                        } else {
-                            info!(channel = %ch_str, "Zmodem download session complete");
-                            *session_done = true;
-                        }
+                        info!(channel = %ch_str, "ZMODEM DOWNLOAD: SessionComplete event");
+                        *session_complete_pending = true;
                     }
                 }
             }
         };
 
         while !session_done {
-            let out = receiver.drain_outgoing();
-            if !out.is_empty() {
-                send_to_channel(&command_tx, channel_id, out);
-                receiver.advance_outgoing(out.len());
-            }
-
             process_file_data(
-                &mut receiver, &mut pending_file_start, &mut current_file,
-                &mut buffered_file_data, &mut transferred, &current_filename, current_filesize,
+                &mut receiver,
+                &mut pending_file_start,
+                &mut current_file,
+                &mut buffered_file_data,
+                &mut transferred,
+                &current_filename,
+                current_filesize,
             );
 
             process_events(
-                &mut receiver, &mut pending_file_start, &mut file_complete_pending,
-                &mut session_complete_pending, &mut session_done, &mut current_file,
-                &mut buffered_file_data, &mut transferred, &mut current_filename,
-                &mut current_filesize, &save_path,
+                &mut receiver,
+                &mut pending_file_start,
+                &mut file_complete_pending,
+                &mut session_complete_pending,
+                &mut session_done,
+                &mut current_file,
+                &mut buffered_file_data,
+                &mut transferred,
+                &mut current_filename,
+                &mut current_filesize,
+                &save_path,
             );
 
-            if session_done {
+            if file_complete_pending {
+                if let Some(ref mut file) = current_file {
+                    let _ = file.flush();
+                }
+                current_file = None;
+                file_complete_pending = false;
+            }
+
+            if session_complete_pending {
+                if let Some(ref mut file) = current_file {
+                    let _ = file.flush();
+                }
+                current_file = None;
+                session_done = true;
                 break;
             }
 
@@ -626,128 +668,105 @@ pub fn spawn_download_session(
             if !out.is_empty() {
                 send_to_channel(&command_tx, channel_id, out);
                 receiver.advance_outgoing(out.len());
-                continue;
             }
 
-            tokio::select! {
-                input = input_rx.recv() => {
-                    match input {
-                        Some(ZmodemInput::Data(data)) => {
-                            let mut remaining = data.as_slice();
-                            while !remaining.is_empty() {
-                                let consumed = match receiver.feed_incoming(remaining) {
-                                    Ok(n) => n,
-                                    Err(e) => {
-                                        error!(channel = %ch_str, error = ?e, "Feed incoming error");
-                                        break;
-                                    }
-                                };
-                                if consumed == 0 {
-                                    break;
-                                }
-                                remaining = &remaining[consumed..];
-
-                                let out = receiver.drain_outgoing();
-                                if !out.is_empty() {
-                                    send_to_channel(&command_tx, channel_id, out);
-                                    receiver.advance_outgoing(out.len());
-                                }
-
-                                process_file_data(
-                                    &mut receiver, &mut pending_file_start, &mut current_file,
-                                    &mut buffered_file_data, &mut transferred, &current_filename, current_filesize,
-                                );
-
-                                process_events(
-                                    &mut receiver, &mut pending_file_start, &mut file_complete_pending,
-                                    &mut session_complete_pending, &mut session_done, &mut current_file,
-                                    &mut buffered_file_data, &mut transferred, &mut current_filename,
-                                    &mut current_filesize, &save_path,
-                                );
-
-                                if session_done {
-                                    break;
-                                }
+            match input_rx.recv().await {
+                Some(ZmodemInput::Data(data)) => {
+                    info!(channel = %ch_str, data_len = data.len(), "ZMODEM DOWNLOAD: received data from server");
+                    let mut remaining = data.as_slice();
+                    while !remaining.is_empty() {
+                        let consumed = match receiver.feed_incoming(remaining) {
+                            Ok(n) => n,
+                            Err(e) => {
+                                error!(channel = %ch_str, error = ?e, "Feed incoming error in download");
+                                break;
                             }
+                        };
+                        if consumed == 0 {
+                            break;
                         }
-                        Some(ZmodemInput::SavePathSelected(path)) => {
-                            save_path = Some(path);
+                        remaining = &remaining[consumed..];
 
-                            if pending_file_start {
-                                let sp = save_path.as_ref().unwrap();
-                                let file_path = if sp.is_dir() || sp.extension().is_none() {
-                                    sp.join(&current_filename)
-                                } else {
-                                    sp.clone()
-                                };
+                        process_file_data(
+                            &mut receiver,
+                            &mut pending_file_start,
+                            &mut current_file,
+                            &mut buffered_file_data,
+                            &mut transferred,
+                            &current_filename,
+                            current_filesize,
+                        );
 
-                                if let Some(parent) = file_path.parent() {
-                                    let _ = std::fs::create_dir_all(parent);
-                                }
+                        process_events(
+                            &mut receiver,
+                            &mut pending_file_start,
+                            &mut file_complete_pending,
+                            &mut session_complete_pending,
+                            &mut session_done,
+                            &mut current_file,
+                            &mut buffered_file_data,
+                            &mut transferred,
+                            &mut current_filename,
+                            &mut current_filesize,
+                            &save_path,
+                        );
 
-                                match std::fs::File::create(&file_path) {
-                                    Ok(f) => {
-                                        current_file = Some(f);
-                                        info!(channel = %ch_str, file = %current_filename, size = current_filesize, "Starting download (path provided)");
-                                        emit_progress(&app_handle, &ch_str, "download", &current_filename, 0, current_filesize);
-                                    }
-                                    Err(e) => {
-                                        error!(path = %file_path.display(), error = ?e, "Cannot create file");
-                                    }
-                                }
-
-                                if !buffered_file_data.is_empty() {
-                                    if let Some(ref mut file) = current_file {
-                                        for chunk in &buffered_file_data {
-                                            if let Err(e) = file.write_all(chunk) {
-                                                error!(channel = %ch_str, error = ?e, "Buffered file write error");
-                                            }
-                                        }
-                                        transferred += buffered_file_data.iter().map(|c| c.len() as u64).sum::<u64>();
-                                        emit_progress(&app_handle, &ch_str, "download", &current_filename, transferred, current_filesize);
-                                    }
-                                    buffered_file_data.clear();
-                                }
-
-                                pending_file_start = false;
-                            }
-
-                            if file_complete_pending {
-                                if let Some(file) = current_file.take() {
-                                    drop(file);
-                                }
-                                info!(channel = %ch_str, file = %current_filename, "File download complete (path provided late)");
-                                if current_filesize > 0 {
-                                    emit_progress(&app_handle, &ch_str, "download", &current_filename, current_filesize, current_filesize);
-                                } else {
-                                    emit_progress(&app_handle, &ch_str, "download", &current_filename, transferred, transferred);
-                                }
-                                current_filename.clear();
-                                file_complete_pending = false;
-                            }
-
-                            if session_complete_pending {
-                                info!(channel = %ch_str, "Zmodem download session complete (path provided late)");
-                                session_done = true;
-                            }
+                        let out = receiver.drain_outgoing();
+                        if !out.is_empty() {
+                            send_to_channel(&command_tx, channel_id, out);
+                            receiver.advance_outgoing(out.len());
                         }
-                        Some(ZmodemInput::Cancel) | None => {
-                            info!(channel = %ch_str, "Zmodem download cancelled");
-                            let cancel_bytes = b"\x18\x18\x18\x18\x08\x08\x08\x08";
-                            send_to_channel(&command_tx, channel_id, cancel_bytes);
-                            emit_complete(&app_handle, &ch_str, "download", false);
-                            return;
+
+                        if session_done {
+                            break;
                         }
-                        _ => {}
                     }
                 }
-            }
-        }
+                Some(ZmodemInput::SavePathSelected(path)) => {
+                    info!(channel = %ch_str, path = %path.display(), "ZMODEM DOWNLOAD: save path selected");
+                    save_path = Some(path);
+                    pending_file_start = false;
 
-        let out = receiver.drain_outgoing();
-        if !out.is_empty() {
-            send_to_channel(&command_tx, channel_id, out);
-            receiver.advance_outgoing(out.len());
+                    if !current_filename.is_empty() {
+                        let sp = save_path.as_ref().unwrap();
+                        let file_path = if sp.is_dir() || sp.extension().is_none() {
+                            sp.join(&current_filename)
+                        } else {
+                            sp.clone()
+                        };
+
+                        if let Some(parent) = file_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+
+                        match std::fs::File::create(&file_path) {
+                            Ok(f) => {
+                                current_file = Some(f);
+                                for data in buffered_file_data.drain(..) {
+                                    if let Some(ref mut file) = current_file {
+                                        if let Err(e) = file.write_all(&data) {
+                                            error!(channel = %ch_str, error = ?e, "Buffered data write error");
+                                        }
+                                        transferred += data.len() as u64;
+                                    }
+                                }
+                                emit_progress(&app_handle, &ch_str, "download", &current_filename, transferred, current_filesize);
+                            }
+                            Err(e) => {
+                                error!(channel = %ch_str, path = %file_path.display(), error = ?e, "Cannot create file");
+                            }
+                        }
+                    }
+                }
+                Some(ZmodemInput::Cancel) | None => {
+                    info!(channel = %ch_str, "Zmodem download cancelled");
+                    let cancel_bytes = b"\x18\x18\x18\x18\x08\x08\x08\x08";
+                    send_to_channel(&command_tx, channel_id, cancel_bytes);
+                    emit_complete(&app_handle, &ch_str, "download", false);
+                    return;
+                }
+                _ => {}
+            }
         }
 
         emit_complete(&app_handle, &ch_str, "download", true);

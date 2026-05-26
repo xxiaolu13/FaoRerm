@@ -99,6 +99,7 @@ fn spawn_event_forwarder(
                     let services = crate::FAO_SERVICES.lock().await;
                     let zmodem_guard = services.zmodem_sessions.lock().await;
                     if let Some(zsession) = zmodem_guard.get(&ch_str) {
+                        info!(channel = %ch_str, data_len = data.len(), "ZMODEM ROUTE: sending data to existing zmodem session");
                         let _ = zsession.send_data(data.to_vec());
                         continue;
                     }
@@ -106,7 +107,7 @@ fn spawn_event_forwarder(
                     drop(services);
 
                     if let Some(direction) = zmodem::detect_zmodem(&data) {
-                        info!(channel = %ch_str, direction = %direction, "Zmodem detected");
+                        info!(channel = %ch_str, direction = %direction, data_len = data.len(), "Zmodem detected, creating session");
                         let services = crate::FAO_SERVICES.lock().await;
                         let handles_guard = services.handles.lock().await;
                         if let Some(session_handles) = handles_guard.get(&sid) {
