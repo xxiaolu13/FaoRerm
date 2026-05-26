@@ -2,6 +2,7 @@ import { useUIStore } from "../stores/uiStore";
 import { useTerminalStore } from "../stores/terminalStore";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
 import type { ZmodemStartEvent } from "../types";
 
@@ -96,25 +97,23 @@ export function ZmodemEventHandler() {
     const unlisteners: Array<() => void> = [];
 
     (async () => {
-      const { listen } = await import("@tauri-apps/api/event");
-
       const startUnlisten = await listen<ZmodemStartEvent>("zmodem:start", async (event) => {
         const { channel_id, direction } = event.payload;
 
-        addZmodemTransfer({
-          channelId: channel_id,
-          direction: direction as "upload" | "download",
-          filename: "",
-          transferred: 0,
-          total: 0,
-          active: true,
-        });
+        if (direction === "upload") {
+          addZmodemTransfer({
+            channelId: channel_id,
+            direction: "upload",
+            filename: "",
+            transferred: 0,
+            total: 0,
+            active: true,
+          });
 
-        if (pendingDialogRef.current.has(channel_id)) return;
-        pendingDialogRef.current.set(channel_id, true);
+          if (pendingDialogRef.current.has(channel_id)) return;
+          pendingDialogRef.current.set(channel_id, true);
 
-        try {
-          if (direction === "upload") {
+          try {
             const selected = await open({
               multiple: true,
               title: "Select files to upload",
@@ -126,26 +125,45 @@ export function ZmodemEventHandler() {
               await invoke("zmodem_cancel", { channelId: channel_id });
               removeZmodemTransfer(channel_id);
             }
-          } else {
+          } catch (err) {
+            console.error("Zmodem dialog error:", err);
+            try {
+              await invoke("zmodem_cancel", { channelId: channel_id });
+            } catch {}
+            removeZmodemTransfer(channel_id);
+          } finally {
+            pendingDialogRef.current.delete(channel_id);
+          }
+        } else {
+          if (pendingDialogRef.current.has(channel_id)) return;
+          pendingDialogRef.current.set(channel_id, true);
+
+          try {
             const selected = await save({
               title: "Save downloaded file",
               defaultPath: "downloaded_file",
             });
             if (selected) {
+              addZmodemTransfer({
+                channelId: channel_id,
+                direction: "download",
+                filename: "",
+                transferred: 0,
+                total: 0,
+                active: true,
+              });
               await invoke("zmodem_provide_save_path", { channelId: channel_id, path: String(selected) });
             } else {
               await invoke("zmodem_cancel", { channelId: channel_id });
-              removeZmodemTransfer(channel_id);
             }
+          } catch (err) {
+            console.error("Zmodem dialog error:", err);
+            try {
+              await invoke("zmodem_cancel", { channelId: channel_id });
+            } catch {}
+          } finally {
+            pendingDialogRef.current.delete(channel_id);
           }
-        } catch (err) {
-          console.error("Zmodem dialog error:", err);
-          try {
-            await invoke("zmodem_cancel", { channelId: channel_id });
-          } catch {}
-          removeZmodemTransfer(channel_id);
-        } finally {
-          pendingDialogRef.current.delete(channel_id);
         }
       });
 
