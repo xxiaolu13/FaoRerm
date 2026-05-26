@@ -90,6 +90,7 @@ export function ZmodemEventHandler() {
   const updateZmodemTransfer = useUIStore((s) => s.updateZmodemTransfer);
   const removeZmodemTransfer = useUIStore((s) => s.removeZmodemTransfer);
   const pendingDialogRef = useRef<Map<string, boolean>>(new Map());
+  const downloadPendingRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -135,19 +136,34 @@ export function ZmodemEventHandler() {
             pendingDialogRef.current.delete(channel_id);
           }
         } else {
-          if (pendingDialogRef.current.has(channel_id)) return;
+          downloadPendingRef.current.set(channel_id, "");
+        }
+      });
+
+      const progressUnlisten = await listen<import("../types").ZmodemProgress>("zmodem:progress", async (event) => {
+        const { channel_id, direction, filename, transferred, total } = event.payload;
+        updateZmodemTransfer(channel_id, {
+          direction: direction as "upload" | "download",
+          filename,
+          transferred,
+          total,
+          active: true,
+        });
+
+        if (direction === "download" && filename && downloadPendingRef.current.has(channel_id) && !pendingDialogRef.current.has(channel_id)) {
+          downloadPendingRef.current.delete(channel_id);
           pendingDialogRef.current.set(channel_id, true);
 
           try {
             const selected = await save({
               title: "Save downloaded file",
-              defaultPath: "downloaded_file",
+              defaultPath: filename,
             });
             if (selected) {
               addZmodemTransfer({
                 channelId: channel_id,
                 direction: "download",
-                filename: "",
+                filename,
                 transferred: 0,
                 total: 0,
                 active: true,
@@ -167,23 +183,14 @@ export function ZmodemEventHandler() {
         }
       });
 
-      const progressUnlisten = await listen<import("../types").ZmodemProgress>("zmodem:progress", (event) => {
-        const { channel_id, direction, filename, transferred, total } = event.payload;
-        updateZmodemTransfer(channel_id, {
-          direction: direction as "upload" | "download",
-          filename,
-          transferred,
-          total,
-          active: true,
-        });
-      });
-
       const completeUnlisten = await listen<import("../types").ZmodemCompleteEvent>("zmodem:complete", (event) => {
         const { channel_id } = event.payload;
         updateZmodemTransfer(channel_id, { active: false });
         setTimeout(() => {
           removeZmodemTransfer(channel_id);
         }, 1500);
+
+        downloadPendingRef.current.delete(channel_id);
       });
 
       if (cancelled) {
