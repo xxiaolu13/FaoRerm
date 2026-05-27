@@ -6,7 +6,58 @@ import { invoke } from "@tauri-apps/api/core";
 import { terminalManager } from "../terminal/terminalManager";
 import { useUIStore } from "../stores/uiStore";
 import { useTerminalStore } from "../stores/terminalStore";
+import { useThemeStore } from "../stores/themeStore";
 import "xterm/css/xterm.css";
+
+const darkTerminalTheme = {
+  background: "#1e1e1e",
+  foreground: "#d4d4d4",
+  cursor: "#f5e0dc",
+  cursorAccent: "#1e1e1e",
+  selectionBackground: "#3a3a3a",
+  selectionForeground: "#d4d4d4",
+  black: "#3a3a3a",
+  red: "#f38ba8",
+  green: "#639f5dff",
+  yellow: "#f9e2af",
+  blue: "#89b4fa",
+  magenta: "#f5c2e7",
+  cyan: "#54ae9fff",
+  white: "#d4d4d4",
+  brightBlack: "#4a4a4a",
+  brightRed: "#f38ba8",
+  brightGreen: "#639f5dff",
+  brightYellow: "#f9e2af",
+  brightBlue: "#89b4fa",
+  brightMagenta: "#f5c2e7",
+  brightCyan: "#54ae9fff",
+  brightWhite: "#a0a0a0",
+};
+
+const lightTerminalTheme = {
+  background: "#f5f5f4",
+  foreground: "#1c1917",
+  cursor: "#dc2626",
+  cursorAccent: "#f5f5f4",
+  selectionBackground: "#bfdbfe",
+  selectionForeground: "#1c1917",
+  black: "#a8a29e",
+  red: "#dc2626",
+  green: "#15803d",
+  yellow: "#d97706",
+  blue: "#2563eb",
+  magenta: "#c026d3",
+  cyan: "#0891b2",
+  white: "#1c1917",
+  brightBlack: "#78716c",
+  brightRed: "#dc2626",
+  brightGreen: "#15803d",
+  brightYellow: "#d97706",
+  brightBlue: "#2563eb",
+  brightMagenta: "#c026d3",
+  brightCyan: "#0891b2",
+  brightWhite: "#57534e",
+};
 
 interface Props {
   tabId: string;
@@ -20,6 +71,7 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const channelIdRef = useRef(channelId);
+  const resolved = useThemeStore((s) => s.resolved);
   const hostKeyModal = useUIStore((s) => s.hostKeyModal);
   const keyboardAuthModal = useUIStore((s) => s.keyboardAuthModal);
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
@@ -37,30 +89,7 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
       cursorBlink: true,
       fontSize: 14,
       fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
-      theme: {
-        background: "#1e1e1e",
-        foreground: "#d4d4d4",
-        cursor: "#f5e0dc",
-        cursorAccent: "#1e1e1e",
-        selectionBackground: "#3a3a3a",
-        selectionForeground: "#d4d4d4",
-        black: "#3a3a3a",
-        red: "#f38ba8",
-        green: "#a6e3a1",
-        yellow: "#f9e2af",
-        blue: "#89b4fa",
-        magenta: "#f5c2e7",
-        cyan: "#94e2d5",
-        white: "#d4d4d4",
-        brightBlack: "#4a4a4a",
-        brightRed: "#f38ba8",
-        brightGreen: "#a6e3a1",
-        brightYellow: "#f9e2af",
-        brightBlue: "#89b4fa",
-        brightMagenta: "#f5c2e7",
-        brightCyan: "#94e2d5",
-        brightWhite: "#a0a0a0",
-      },
+      theme: resolved === "light" ? lightTerminalTheme : darkTerminalTheme,
       allowProposedApi: true,
       scrollback: 10000,
     });
@@ -143,6 +172,12 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
       fitAddonRef.current = null;
     };
   }, [tabId]);
+
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = resolved === "light" ? lightTerminalTheme : darkTerminalTheme;
+    }
+  }, [resolved]);
 
   useEffect(() => {
     if (channelId && termRef.current) {

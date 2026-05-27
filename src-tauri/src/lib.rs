@@ -39,6 +39,8 @@ pub fn run() {
             add_blacklist_config,
             add_and_edit_quick_command,
             del_quick_command,
+            get_appearance_config,
+            update_appearance_config,
             // Screen / Master Password
             unlock,
             clear_master_password,

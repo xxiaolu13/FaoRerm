@@ -2,7 +2,7 @@
 use crate::client::key::*;
 
 use crate::service::FaoConfig;
-use crate::service::{ ServerConfig, AIConfig, BlacklistConfig, AuthMethod};
+use crate::service::{ ServerConfig, AIConfig, BlacklistConfig, AppearanceConfig, AuthMethod};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use bytes::Bytes;
 use russh::keys::PublicKeyBase64;
@@ -141,5 +141,27 @@ pub async fn del_quick_command(description: String) -> Result<(), String> {
         .clone();
     info.delete_quick_command(&description)
     .map_err(|e| format!("delete quick command error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_appearance_config() -> Result<AppearanceConfig, String> {
+    let info = FAO_SERVICES
+        .lock()
+        .await
+        .config
+        .get_snapshot();
+    Ok(info.appearance)
+}
+
+#[tauri::command]
+pub async fn update_appearance_config(theme: String) -> Result<(), String> {
+    let info = FAO_SERVICES
+        .lock()
+        .await
+        .config
+        .clone();
+    info.update_appearance(&theme)
+    .map_err(|e| format!("update appearance error: {}", e))?;
     Ok(())
 }

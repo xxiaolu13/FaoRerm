@@ -4,6 +4,7 @@ import { useTerminalStore } from "./stores/terminalStore";
 import { useUIStore } from "./stores/uiStore";
 import { useServerStore } from "./stores/serverStore";
 import { useSshEvents } from "./hooks/useSshEvents";
+import { useThemeStore } from "./stores/themeStore";
 import { Sidebar } from "./components/Sidebar";
 import { TabBar, TabContextMenu } from "./components/TabBar";
 import { TerminalView } from "./components/TerminalView";
@@ -324,6 +325,11 @@ function GlobalKeyboardShortcuts() {
 
 export default function App() {
   useSshEvents();
+  const loadTheme = useThemeStore((s) => s.loadTheme);
+
+  useEffect(() => {
+    loadTheme();
+  }, [loadTheme]);
 
   return (
     <div className="app">

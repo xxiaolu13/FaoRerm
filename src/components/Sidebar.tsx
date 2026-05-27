@@ -46,6 +46,16 @@ export function Sidebar() {
                 </svg>
                 Blacklist
               </button>
+              <button
+                className={`sidebar-action-btn ${managementTab === "settings" ? "sidebar-action-btn--active" : ""}`}
+                onClick={() => setManagementTab("settings")}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <circle cx="7" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M7 1V3M7 11V13M1 7H3M11 7H13M2.5 2.5L4 4M10 10L11.5 11.5M11.5 2.5L10 4M4 10L2.5 11.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                Settings
+              </button>
             </div>
           </div>
         </nav>

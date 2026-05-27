@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useServerStore } from "../stores/serverStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
+import { SettingsPage } from "./SettingsPage";
 
 function QuickCommandsManagement() {
   const quickCommands = useServerStore((s) => s.quickCommands);
@@ -258,9 +259,10 @@ export function ManagementPage() {
   const managementTab = useUIStore((s) => s.managementTab);
   const setManagementTab = useUIStore((s) => s.setManagementTab);
 
-  const tabs: { key: "commands" | "blacklist"; label: string }[] = [
+  const tabs: { key: "commands" | "blacklist" | "settings"; label: string }[] = [
     { key: "commands", label: "Quick Commands" },
     { key: "blacklist", label: "Blacklist" },
+    { key: "settings", label: "Settings" },
   ];
 
   return (
@@ -283,6 +285,7 @@ export function ManagementPage() {
       <div className="mgmt-page-body">
         {managementTab === "commands" && <QuickCommandsManagement />}
         {managementTab === "blacklist" && <BlacklistManagement />}
+        {managementTab === "settings" && <SettingsPage />}
       </div>
     </div>
   );

@@ -38,6 +38,26 @@ pub struct FaoConfig {
     pub server: BTreeMap<String, ServerConfig>,
     #[serde(default)]
     pub quick_command: BTreeMap<String, String>,
+    #[serde(default)]
+    pub appearance: AppearanceConfig,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AppearanceConfig {
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "system".to_string()
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            theme: default_theme(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -198,6 +218,11 @@ impl ConfigManager {
             return Err(ConfigError::ServerNotFound(des.to_string()));
         }
         drop(guard);
+        self.save()
+    }
+
+    pub fn update_appearance(&self, theme: &str) -> Result<(), ConfigError> {
+        self.data.write().appearance.theme = theme.to_string();
         self.save()
     }
 

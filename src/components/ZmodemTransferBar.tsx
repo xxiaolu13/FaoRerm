@@ -3,6 +3,7 @@ import { useTerminalStore } from "../stores/terminalStore";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "../stores/toastStore";
 import { useEffect, useRef } from "react";
 import type { ZmodemStartEvent } from "../types";
 
@@ -183,14 +184,25 @@ export function ZmodemEventHandler() {
         }
       });
 
-      const completeUnlisten = await listen<import("../types").ZmodemCompleteEvent>("zmodem:complete", (event) => {
-        const { channel_id } = event.payload;
+      const completeUnlisten = await listen<import("../types").ZmodemCompleteEvent>("zmodem:complete", async (event) => {
+        const { channel_id, direction, success } = event.payload;
+        const transfer = useUIStore.getState().zmodemTransfers.get(channel_id);
+        const filename = transfer?.filename || "";
+        const isUpload = direction === "upload";
+        const label = isUpload ? "上传" : "下载";
+
         updateZmodemTransfer(channel_id, { active: false });
         setTimeout(() => {
           removeZmodemTransfer(channel_id);
         }, 1500);
 
         downloadPendingRef.current.delete(channel_id);
+
+        if (success) {
+          toast(`${label}完成`, { description: filename ? `${filename} ${label}成功` : `${label}成功`, variant: "success" });
+        } else {
+          toast(`${label}失败`, { description: filename ? `${filename} ${label}失败` : `${label}失败`, variant: "error" });
+        }
       });
 
       if (cancelled) {

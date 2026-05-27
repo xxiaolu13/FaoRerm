@@ -18,6 +18,11 @@ export interface FaoConfig {
   global_blacklist: BlacklistConfig;
   server: Record<string, ServerConfig>;
   quick_command: Record<string, string>;
+  appearance: AppearanceConfig;
+}
+
+export interface AppearanceConfig {
+  theme: string;
 }
 
 export interface AIConfig {
