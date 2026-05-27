@@ -1,23 +1,11 @@
 # FaoRerm
 
-A cross-platform SSH client built with [Tauri](https://tauri.app/) and [React](https://react.dev/). Terminal emulation powered by [xterm.js](https://xtermjs.org/), SSH protocol handled by [russh](https://github.com/RussianOtter/russh) — huge thanks to Eugene (RussianOtter) for this excellent Rust SSH implementation. Architecture inspired by [Warpgate](https://github.com/warp-tech/warpgate).
-
-## Features
-
-- **SSH connectivity** — password and private key authentication, host key verification, keyboard-interactive auth
-- **Tabbed terminal** — multiple sessions in parallel with xterm.js + WebGL renderer
-- **Zmodem transfers** — integrated upload/download support
-- **Master password** — AES-256-GCM encrypted secrets, unlock once per session
-- **Server management** — add, edit, delete server configs stored as TOML
-- **Quick commands** — user-defined command presets with instant one-click send
-- **Blacklist** — command-level filtering per server or globally
-- **Theme switcher** — light, dark, follow system
-- **Lock screen** — `Ctrl+L` to lock when stepping away
+A cross-platform SSH client built with Tauri, xterm.js, and russh.
 
 ## Prerequisites
 
 - [Rust](https://rustup.rs/) (latest stable)
-- [Node.js](https://nodejs.org/) ≥ 18
+- [Node.js](https://nodejs.org/) >= 18
 - Platform build dependencies: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ## Quick Start
@@ -35,41 +23,79 @@ npm run tauri build
 
 Bundles output to `src-tauri/target/release/bundle/`.
 
-## Tech Stack
+## Usage
 
-| Layer | Technology |
-|-------|-----------|
-| Desktop shell | Tauri v2 |
-| Frontend | React 18, TypeScript, Vite |
-| Terminal | xterm.js + addon-fit + addon-webgl |
-| State | Zustand |
-| SSH | russh 0.45 (Rust async SSH) |
-| Crypto | AES-256-GCM, ChaCha20-Poly1305, bcrypt |
-| Config | TOML (encrypted secrets) |
+### Master Password
 
-## Project Structure
+On first launch, you'll be prompted to set a master password. This password encrypts all stored server credentials (AES-256-GCM). After a restart or after locking, enter this password to unlock the app.
 
-```
-src/                  # React frontend
-  components/         # UI components
-  stores/             # Zustand state stores
-  hooks/              # React hooks (SSH events, terminal)
-  terminal/           # xterm.js manager
-src-tauri/
-  src/
-    main.rs           # Entry point
-    lib.rs            # Tauri command handlers
-    service.rs        # Config manager & session state
-    client/           # SSH client (russh wrapper)
-    enter/            # SSH connection, screen lock, CRUD commands
-    zmodem.rs         # Zmodem protocol handling
-```
+- The lock screen appears automatically on launch if a master password is set.
+- Press **`Ctrl+L`** at any time to manually lock the app when stepping away.
+- The lock ensures all SSH credentials stay encrypted at rest.
 
-## Acknowledgments
+### Server Management
 
-- [russh](https://github.com/RussianOtter/russh) by Eugene — the async Rust SSH library that makes this project possible
-- [Warpgate](https://github.com/warp-tech/warpgate) — architectural reference for SSH session management
-- [xterm.js](https://xtermjs.org/) — browser-based terminal emulation
+In the left sidebar, click the **+** button to add a new server. You'll need to fill in:
+
+| Field | Description |
+|-------|-------------|
+| Server Name | A friendly label (e.g., `production-web`) |
+| Host | IP address or hostname |
+| Port | SSH port (default 22) |
+| Username | SSH login user (default `root`) |
+| Auth Method | `Password` or `Private Key` |
+| Password / Key Path | Password string, or path to a private key file (e.g., `/home/user/.ssh/id_ed25519`) |
+
+Expand **Advanced Options** to configure inactivity timeout, keepalive interval, and whether to allow insecure algorithms.
+
+- Click a server in the sidebar to connect.
+- Hover and click the edit icon to modify a server's config.
+- Click the delete icon to remove a server.
+
+All server configs are stored as TOML in the platform config directory (`faoconfig.toml`).
+
+### Terminal Tabs
+
+Each SSH connection opens in a new tab at the top of the terminal area. You can have multiple sessions open simultaneously and switch between them. Close a tab to disconnect the session.
+
+### Quick Commands
+
+Open the command panel by clicking the right-edge toggle or pressing **`Ctrl+Shift+P`**.
+
+Quick commands are preset command snippets that you can send to the active terminal with one click. Useful for frequently-used commands like restarting a service, checking logs, or navigating to a directory.
+
+- Use `\n` in a command to send multiple lines (e.g., `cd /var/log\nls -la`).
+- Add, edit, and delete commands from the panel or from the **Management** page.
+- Commands are saved to the config file and persist across restarts.
+
+### Zmodem File Transfer
+
+FaoRerm supports Zmodem protocol for transferring files over an active SSH session. Just run `sz` (send/Zmodem download) or `rz` (receive/Zmodem upload) in the remote terminal:
+
+- **`sz <filename>`** — triggers a save dialog to download files from the remote server to your local machine.
+- **`rz`** — triggers a file picker; select local files to upload them to the remote server.
+
+A progress bar appears above the terminal during transfers. Click the cancel button to abort.
+
+### Command Blacklist
+
+Go to **Management > Blacklist** to configure command patterns that are blocked from execution. Any command containing a blacklisted substring will be rejected before reaching the remote server.
+
+- Add patterns like `rm -rf`, `shutdown`, or `DROP TABLE`.
+- Blacklist entries apply globally to all servers.
+- Each server config also supports a per-server `contains` list for server-specific filtering.
+
+### Theme
+
+Go to **Management > Settings** to switch between **System** (follows OS), **Dark**, and **Light** themes.
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| **`Ctrl+L`** | Lock application |
+| **`Ctrl+Shift+P`** | Toggle command panel |
+| **`Ctrl+Shift+C`** | Copy terminal selection |
 
 ## License
 
