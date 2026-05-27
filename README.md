@@ -1,6 +1,11 @@
 # FaoRerm
 
 A cross-platform SSH client built with Tauri, xterm.js, and russh.
+## photo
+<img width="1704" height="983" alt="图片" src="https://github.com/user-attachments/assets/dcb0bffe-8d48-4b43-ac36-7f92487647c7" />
+<img width="1701" height="989" alt="图片" src="https://github.com/user-attachments/assets/9b88c6c6-aa0b-4502-a652-9756f4818030" />
+<img width="1693" height="983" alt="图片" src="https://github.com/user-attachments/assets/2f199551-e52a-4276-91bb-189e98252af1" />
+<img width="1690" height="985" alt="图片" src="https://github.com/user-attachments/assets/53d7d5b1-8540-429f-a594-6821d0390037" />
 
 ## Prerequisites
 
