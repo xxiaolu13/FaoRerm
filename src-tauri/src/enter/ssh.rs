@@ -139,7 +139,7 @@ fn spawn_event_forwarder(
                     }
 
                     let _ = output_channel.send(ChannelOutput {
-                        channel_id: ch_str,
+                        channel_id: ch_str.clone(),
                         data: data.to_vec(),
                     });
                 }
@@ -181,6 +181,15 @@ fn spawn_event_forwarder(
                         if let Some(h) = handles_guard.get(&sid) {
                             h.channels.lock().await.remove(&ch_str);
                         };
+                        services.copilot_cancel.remove(&ch_str);
+                        services.copilots.lock().await.remove(&ch_str);
+                        let _ = app_handle.emit(
+                            &format!("copilot:event:{}", ch_str),
+                            serde_json::json!({
+                                "type": "error",
+                                "message": "Channel closed",
+                            }),
+                        );
                     }
                     emit(&app_handle, &sid, Some(&ch_str), SshEventKind::ChannelClose);
                 }

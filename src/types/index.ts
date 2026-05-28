@@ -25,10 +25,27 @@ export interface AppearanceConfig {
   theme: string;
 }
 
-export interface AIConfig {
+export interface ProviderConfig {
+  provider_type: string;
   url: string;
   token: string;
   model: string;
+  max_turns: number;
+  thinking_budget: number | null;
+  extra_system_prompt: string | null;
+}
+
+export interface AIConfig {
+  providers: Record<string, ProviderConfig>;
+  default_provider: string;
+}
+
+export interface CopilotConfirmEvent {
+  request_id: string;
+  tool: string;
+  input: unknown;
+  description?: string;
+  permission_level?: string;
 }
 
 export interface BlacklistConfig {

@@ -26,6 +26,7 @@ env_logger = "0.11"
 russh = { version = "0.60.0", features = ["des", "rsa", "aws-lc-rs"], default-features = false }
 russh-keys = "0.46"
 tokio = { version = "1.52.1", features = ["full", "tracing"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 shell-escape = "0.1"
 ssh-key = "0.6"
 futures-util = "0.3.32"
@@ -53,5 +54,13 @@ futures = "0.3.32"
 rand = "0.10.1"
 parking_lot = "0.12.5"
 anyhow = "1.0"
+async-trait = "0.1"
 tauri-plugin-dialog = "2.7.1"
 zmodem2 = "0.5.0"
+cersei = { version = "0.1.9", default-features = false }
+cersei-provider = "0.1.9"
+cersei-agent = "0.1.9"
+cersei-tools = { version = "0.1.9", default-features = false, features = ["file-watch"] }
+cersei-memory = "0.1.9"
+cersei-types = "0.1.9"
+cersei-hooks = "0.1.9"

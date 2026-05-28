@@ -1,0 +1,329 @@
+import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { ProviderConfig, CopilotConfirmEvent } from "../types";
+
+export interface ToolCallInfo {
+  id: string;
+  name: string;
+  input: unknown;
+  status: "running" | "done" | "error";
+  result?: string;
+  durationMs?: number;
+}
+
+export interface CopilotMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  thinking: string;
+  toolCalls: ToolCallInfo[];
+  status: "streaming" | "done" | "error";
+  error?: string;
+}
+
+interface ChannelConversation {
+  messages: CopilotMessage[];
+  loading: boolean;
+}
+
+interface ConfirmRequest {
+  requestId: string;
+  tool: string;
+  input: unknown;
+  description: string;
+  permissionLevel: string;
+}
+
+interface AIStore {
+  providers: Record<string, ProviderConfig>;
+  defaultProvider: string;
+  conversations: Record<string, ChannelConversation>;
+  confirmRequest: ConfirmRequest | null;
+  _listeners: Record<string, UnlistenFn>;
+
+  getChannelConv: (channelId: string) => ChannelConversation;
+  loadProviders: () => Promise<void>;
+  upsertProvider: (name: string, config: ProviderConfig) => Promise<void>;
+  deleteProvider: (name: string) => Promise<void>;
+  setDefaultProvider: (name: string) => Promise<void>;
+  ask: (sessionId: string, channelId: string, question: string) => Promise<void>;
+  cancelAsk: (channelId: string) => Promise<void>;
+  confirmDecision: (requestId: string, approved: boolean) => Promise<void>;
+  dismissConfirm: () => void;
+  clearMessages: (channelId: string) => void;
+  initChannelListener: (channelId: string) => Promise<void>;
+  removeChannelListener: (channelId: string) => void;
+  initConfirmListener: () => Promise<UnlistenFn>;
+}
+
+let msgCounter = 0;
+
+function emptyConv(): ChannelConversation {
+  return {
+    messages: [],
+    loading: false,
+  };
+}
+
+export const useAIStore = create<AIStore>((set, get) => ({
+  providers: {},
+  defaultProvider: "",
+  conversations: {},
+  confirmRequest: null,
+  _listeners: {},
+
+  getChannelConv: (channelId) => {
+    return get().conversations[channelId] || emptyConv();
+  },
+
+  loadProviders: async () => {
+    try {
+      const config = await invoke<{ ai: { providers: Record<string, ProviderConfig>; default_provider: string } }>("get_all_config");
+      set({ providers: config.ai.providers, defaultProvider: config.ai.default_provider });
+    } catch (err) {
+      console.error("Failed to load AI providers:", err);
+    }
+  },
+
+  upsertProvider: async (name, config) => {
+    try {
+      await invoke("upsert_ai_provider", { name, config });
+      await get().loadProviders();
+    } catch (err) {
+      console.error("Failed to upsert AI provider:", err);
+      throw err;
+    }
+  },
+
+  deleteProvider: async (name) => {
+    try {
+      await invoke("delete_ai_provider", { name });
+      await get().loadProviders();
+    } catch (err) {
+      console.error("Failed to delete AI provider:", err);
+      throw err;
+    }
+  },
+
+  setDefaultProvider: async (name) => {
+    try {
+      await invoke("set_default_ai_provider", { name });
+      set({ defaultProvider: name });
+    } catch (err) {
+      console.error("Failed to set default AI provider:", err);
+      throw err;
+    }
+  },
+
+  ask: async (sessionId, channelId, question) => {
+    const conv = get().conversations[channelId] || emptyConv();
+    if (conv.loading) return;
+
+    const userMsg: CopilotMessage = {
+      id: `msg-${++msgCounter}`,
+      role: "user",
+      content: question,
+      thinking: "",
+      toolCalls: [],
+      status: "done",
+    };
+
+    const assistantMsg: CopilotMessage = {
+      id: `msg-${++msgCounter}`,
+      role: "assistant",
+      content: "",
+      thinking: "",
+      toolCalls: [],
+      status: "streaming",
+    };
+
+    const newMessages = [...conv.messages, userMsg, assistantMsg];
+
+    set((s) => ({
+      conversations: {
+        ...s.conversations,
+        [channelId]: { messages: newMessages, loading: true },
+      },
+    }));
+
+    await get().initChannelListener(channelId);
+
+    try {
+      await invoke("copilot_ask", { sessionId, channelId, question });
+    } catch (err) {
+      const errMsg = String(err);
+      set((s) => {
+        const c = s.conversations[channelId];
+        if (!c) return s;
+        const msgs = [...c.messages];
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === "assistant") {
+          msgs[msgs.length - 1] = { ...last, status: "error", error: errMsg };
+        }
+        return {
+          conversations: {
+            ...s.conversations,
+            [channelId]: { ...c, messages: msgs, loading: false },
+          },
+        };
+      });
+    }
+  },
+
+  cancelAsk: async (channelId) => {
+    try {
+      await invoke("copilot_cancel", { channelId });
+    } catch (err) {
+      console.error("Failed to cancel:", err);
+    }
+    set((s) => {
+      const c = s.conversations[channelId];
+      if (!c) return s;
+      const msgs = [...c.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.role === "assistant" && last.status === "streaming") {
+        msgs[msgs.length - 1] = { ...last, status: "done" };
+      }
+      return {
+        conversations: {
+          ...s.conversations,
+          [channelId]: { ...c, messages: msgs, loading: false },
+        },
+      };
+    });
+    get().removeChannelListener(channelId);
+  },
+
+  confirmDecision: async (requestId, approved) => {
+    try {
+      await invoke("copilot_confirm_decision", { requestId, approved });
+    } catch (err) {
+      console.error("Failed to send confirm decision:", err);
+    } finally {
+      set({ confirmRequest: null });
+    }
+  },
+
+  dismissConfirm: () => {
+    set({ confirmRequest: null });
+  },
+
+  clearMessages: (channelId) => {
+    set((s) => ({
+      conversations: {
+        ...s.conversations,
+        [channelId]: emptyConv(),
+      },
+    }));
+  },
+
+  initChannelListener: async (channelId) => {
+    if (get()._listeners[channelId]) return;
+
+    const unlisten = await listen(`copilot:event:${channelId}`, (event) => {
+      const payload = event.payload as { type: string; [key: string]: unknown };
+
+      set((s) => {
+        const c = s.conversations[channelId];
+        if (!c) return s;
+
+        const msgs = [...c.messages];
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== "assistant") return s;
+
+        const updated = { ...last };
+        const toolCalls = [...updated.toolCalls];
+
+        switch (payload.type) {
+          case "text_delta":
+            updated.content += (payload.text as string) || "";
+            break;
+          case "thinking_delta":
+            updated.thinking += (payload.text as string) || "";
+            break;
+          case "tool_start": {
+            const tc: ToolCallInfo = {
+              id: payload.id as string,
+              name: payload.name as string,
+              input: payload.input,
+              status: "running",
+            };
+            toolCalls.push(tc);
+            updated.toolCalls = toolCalls;
+            break;
+          }
+          case "tool_end": {
+            const idx = toolCalls.findIndex((t) => t.id === (payload.id as string));
+            if (idx >= 0) {
+              toolCalls[idx] = {
+                ...toolCalls[idx],
+                status: (payload.is_error as boolean) ? "error" : "done",
+                result: payload.result as string,
+                durationMs: payload.duration_ms as number,
+              };
+            }
+            updated.toolCalls = toolCalls;
+            break;
+          }
+          case "status":
+            break;
+          case "error":
+            updated.status = "error";
+            updated.error = payload.message as string;
+            break;
+          case "complete":
+            updated.status = "done";
+            if (payload.text && !updated.content) {
+              updated.content = payload.text as string;
+            }
+            break;
+        }
+
+        msgs[msgs.length - 1] = updated;
+        const loading = updated.status === "streaming";
+        return {
+          conversations: {
+            ...s.conversations,
+            [channelId]: { ...c, messages: msgs, loading },
+          },
+        };
+      });
+
+      if (payload.type === "complete" || payload.type === "error") {
+        get().removeChannelListener(channelId);
+      }
+    });
+
+    set((s) => ({
+      _listeners: { ...s._listeners, [channelId]: unlisten },
+    }));
+  },
+
+  removeChannelListener: (channelId) => {
+    const unlisten = get()._listeners[channelId];
+    if (unlisten) {
+      unlisten();
+      set((s) => {
+        const next = { ...s._listeners };
+        delete next[channelId];
+        return { _listeners: next };
+      });
+    }
+  },
+
+  initConfirmListener: async () => {
+    const unlisten = await listen<CopilotConfirmEvent>("copilot:confirm", (event) => {
+      set({
+        confirmRequest: {
+          requestId: event.payload.request_id,
+          tool: event.payload.tool,
+          input: event.payload.input,
+          description: (event.payload as unknown as { description?: string }).description || "",
+          permissionLevel: (event.payload as unknown as { permission_level?: string }).permission_level || "",
+        },
+      });
+    });
+    return unlisten;
+  },
+}));

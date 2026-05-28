@@ -11,6 +11,7 @@ import { TerminalView } from "./components/TerminalView";
 import { QuickCommands } from "./components/QuickCommands";
 import { ManagementPage } from "./components/ManagementPage";
 import { LockScreen } from "./components/LockScreen";
+import { useAIStore } from "./stores/aiStore";
 import { Toaster } from "./components/Toaster";
 import { ServerModal } from "./components/modals/ServerModal";
 import { MasterPasswordModal } from "./components/modals/MasterPasswordModal";
@@ -101,6 +102,28 @@ function RightDrawerToggle() {
 function RightDrawer() {
   const rightDrawerOpen = useUIStore((s) => s.rightDrawerOpen);
   const [activeTab, setActiveTab] = useState<"commands" | "ai">("commands");
+  const activeSession = useTerminalStore((s) => s.activeSession);
+  const channelId = activeSession?.channelId || "";
+  const convMessages = useAIStore((s) => s.conversations[channelId]?.messages);
+  const convLoading = useAIStore((s) => s.conversations[channelId]?.loading ?? false);
+  const confirmRequest = useAIStore((s) => s.confirmRequest);
+  const ask = useAIStore((s) => s.ask);
+  const cancelAsk = useAIStore((s) => s.cancelAsk);
+  const confirmDecision = useAIStore((s) => s.confirmDecision);
+  const clearMessages = useAIStore((s) => s.clearMessages);
+  const [input, setInput] = useState("");
+
+  const loading = convLoading;
+
+  const handleAsk = () => {
+    if (!input.trim() || !activeSession || loading) return;
+    ask(activeSession.sessionId, channelId, input.trim());
+    setInput("");
+  };
+
+  const handleCancel = () => {
+    cancelAsk(channelId);
+  };
 
   return (
     <div className={`right-drawer-wrapper ${rightDrawerOpen ? "right-drawer-wrapper--open" : ""}`}>
@@ -116,8 +139,6 @@ function RightDrawer() {
             <button
               className={`right-drawer-tab ${activeTab === "ai" ? "right-drawer-tab--active" : ""}`}
               onClick={() => setActiveTab("ai")}
-              disabled
-              title="AI features coming soon"
             >
               AI
             </button>
@@ -126,15 +147,139 @@ function RightDrawer() {
         <div className="right-drawer-content">
           {activeTab === "commands" && <QuickCommands />}
           {activeTab === "ai" && (
-            <div className="right-drawer-section">
-              <div className="ai-placeholder">
-                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="ai-placeholder-icon">
-                  <circle cx="16" cy="16" r="12" stroke="currentColor" strokeWidth="1.2" strokeDasharray="4 3" />
-                  <path d="M12 14C12 14 14 12 16 12C18 12 20 14 20 14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M12 18C12 18 14 20 16 20C18 20 20 18 20 18" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-                <span className="ai-placeholder-text">AI Assistant</span>
-                <span className="ai-placeholder-hint">Coming soon</span>
+            <div className="right-drawer-section ai-panel">
+              {confirmRequest && (
+                <div className="ai-confirm-bar">
+                  <div className="ai-confirm-header">
+                    <span className="ai-confirm-badge">Permission Required</span>
+                    <span className="ai-confirm-tool">{confirmRequest.tool}</span>
+                  </div>
+                  {confirmRequest.description && (
+                    <div className="ai-confirm-desc">{confirmRequest.description}</div>
+                  )}
+                  <div className="ai-confirm-input">
+                    <code>{formatToolInput(confirmRequest.tool, confirmRequest.input)}</code>
+                  </div>
+                  <div className="ai-confirm-actions">
+                    <button
+                      className="btn btn--sm btn--primary"
+                      onClick={() => confirmDecision(confirmRequest.requestId, true)}
+                    >
+                      Allow
+                    </button>
+                    <button
+                      className="btn btn--sm btn--danger"
+                      onClick={() => confirmDecision(confirmRequest.requestId, false)}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="ai-messages">
+                {(convMessages || []).length === 0 && (
+                  <div className="ai-empty">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M12 2a8 8 0 0 1 8 8c0 3.4-2.1 6.3-5 7.5V20a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2.5C6.1 16.3 4 13.4 4 10a8 8 0 0 1 8-8z" />
+                      <path d="M9 22h6" />
+                    </svg>
+                    <span>Ask AI about your terminal session</span>
+                  </div>
+                )}
+                {(convMessages || []).map((msg) => (
+                  <div key={msg.id} className={`ai-message ai-message--${msg.role}`}>
+                    <div className="ai-message-header">
+                      <span className="ai-message-role">{msg.role === "user" ? "You" : "AI"}</span>
+                      {msg.role === "assistant" && msg.status === "streaming" && (
+                        <span className="ai-message-status">
+                          <span className="ai-pulse" />
+                          Working
+                        </span>
+                      )}
+                      {msg.role === "assistant" && msg.status === "error" && (
+                        <span className="ai-message-status ai-message-status--error">Error</span>
+                      )}
+                    </div>
+                    {msg.thinking && (
+                      <details className="ai-thinking">
+                        <summary>Thinking...</summary>
+                        <pre className="ai-thinking-content">{msg.thinking}</pre>
+                      </details>
+                    )}
+                    {msg.toolCalls.length > 0 && (
+                      <div className="ai-tool-calls">
+                        {msg.toolCalls.map((tc) => (
+                          <div key={tc.id} className={`ai-tool-call ai-tool-call--${tc.status}`}>
+                            <div className="ai-tool-call-header">
+                              <span className="ai-tool-call-name">{tc.name}</span>
+                              <span className="ai-tool-call-status">
+                                {tc.status === "running" && "⏳"}
+                                {tc.status === "done" && "✓"}
+                                {tc.status === "error" && "✗"}
+                                {tc.durationMs != null && ` ${tc.durationMs}ms`}
+                              </span>
+                            </div>
+                            <code className="ai-tool-call-input">{formatToolInput(tc.name, tc.input)}</code>
+                            {tc.result && (
+                              <details className="ai-tool-call-result">
+                                <summary>Output</summary>
+                                <pre>{truncate(tc.result, 500)}</pre>
+                              </details>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {msg.content && (
+                      <pre className="ai-message-content">{msg.content}</pre>
+                    )}
+                    {msg.error && (
+                      <div className="ai-message-error">{msg.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="ai-input-bar">
+                <input
+                  className="ai-input"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAsk();
+                    }
+                  }}
+                  placeholder={activeSession ? "Ask AI..." : "No active terminal"}
+                  disabled={!activeSession}
+                />
+                {loading ? (
+                  <button
+                    className="btn btn--danger btn--sm"
+                    onClick={handleCancel}
+                  >
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn--primary btn--sm"
+                    onClick={handleAsk}
+                    disabled={!activeSession || !input.trim()}
+                  >
+                    Send
+                  </button>
+                )}
+                {(convMessages || []).length > 0 && !loading && (
+                  <button
+                    className="btn btn--sm"
+                    onClick={() => clearMessages(channelId)}
+                    title="Clear conversation"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 3H10M5 3V2H7V3M3 3V10H9V3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -142,6 +287,23 @@ function RightDrawer() {
       </div>
     </div>
   );
+}
+
+function formatToolInput(toolName: string, input: unknown): string {
+  if (!input) return "";
+  if (typeof input === "string") return input;
+  try {
+    const obj = input as Record<string, unknown>;
+    if (toolName === "TerminalType" && obj.command) return String(obj.command);
+    return JSON.stringify(input, null, 2);
+  } catch {
+    return String(input);
+  }
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max) + "...";
 }
 
 function TerminalArea() {
@@ -326,10 +488,19 @@ function GlobalKeyboardShortcuts() {
 export default function App() {
   useSshEvents();
   const loadTheme = useThemeStore((s) => s.loadTheme);
+  const initConfirmListener = useAIStore((s) => s.initConfirmListener);
+  const loadProviders = useAIStore((s) => s.loadProviders);
 
   useEffect(() => {
     loadTheme();
   }, [loadTheme]);
+
+  useEffect(() => {
+    loadProviders().catch(() => {});
+    let unlisten: (() => void) | undefined;
+    initConfirmListener().then((fn) => { unlisten = fn; }).catch(() => {});
+    return () => { unlisten?.(); };
+  }, []);
 
   return (
     <div className="app">

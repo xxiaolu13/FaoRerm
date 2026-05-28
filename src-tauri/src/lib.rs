@@ -2,6 +2,7 @@ mod service;
 mod client;
 mod enter;
 mod zmodem;
+mod copilot;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
@@ -58,6 +59,17 @@ pub fn run() {
             zmodem_provide_files,
             zmodem_provide_save_path,
             zmodem_cancel,
+            // AI Provider CRUD
+            get_ai_providers,
+            upsert_ai_provider,
+            delete_ai_provider,
+            set_default_ai_provider,
+            // Copilot
+            copilot_ask,
+            copilot_confirm_decision,
+            copilot_cancel,
+            copilot_set_provider,
+            copilot_clear_conversation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

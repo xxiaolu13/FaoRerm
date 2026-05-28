@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { useThemeStore } from "../stores/themeStore";
+import { useAIStore } from "../stores/aiStore";
 import { toast } from "../stores/toastStore";
+import type { ProviderConfig } from "../types";
 
 type Theme = "system" | "dark" | "light";
 
@@ -8,6 +11,242 @@ const themeOptions: { value: Theme; label: string; desc: string }[] = [
   { value: "dark", label: "Dark", desc: "Always dark" },
   { value: "light", label: "Light", desc: "Always light" },
 ];
+
+const defaultProviderConfig: ProviderConfig = {
+  provider_type: "openai",
+  url: "",
+  token: "",
+  model: "gpt-4o",
+  max_turns: 10,
+  thinking_budget: null,
+  extra_system_prompt: null,
+};
+
+function AIProviderSection() {
+  const providers = useAIStore((s) => s.providers);
+  const defaultProvider = useAIStore((s) => s.defaultProvider);
+  const upsertProvider = useAIStore((s) => s.upsertProvider);
+  const deleteProvider = useAIStore((s) => s.deleteProvider);
+  const setDefaultProvider = useAIStore((s) => s.setDefaultProvider);
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editConfig, setEditConfig] = useState<ProviderConfig>({ ...defaultProviderConfig });
+
+  const entries = Object.entries(providers);
+
+  const handleSave = async () => {
+    if (!editName.trim()) {
+      toast("Provider name is required", { variant: "warning" });
+      return;
+    }
+    if (!editConfig.token.trim()) {
+      toast("API key is required", { variant: "warning" });
+      return;
+    }
+    try {
+      await upsertProvider(editName.trim(), editConfig);
+      setShowAdd(false);
+      setEditName("");
+      setEditConfig({ ...defaultProviderConfig });
+      toast("Provider saved", { variant: "success" });
+    } catch (err) {
+      toast("Failed to save provider", { description: String(err), variant: "error" });
+    }
+  };
+
+  const handleEdit = (name: string, config: ProviderConfig) => {
+    setEditName(name);
+    setEditConfig({ ...config });
+    setShowAdd(true);
+  };
+
+  const handleDelete = async (name: string) => {
+    try {
+      await deleteProvider(name);
+      toast("Provider deleted", { variant: "success" });
+    } catch (err) {
+      toast("Failed to delete", { description: String(err), variant: "error" });
+    }
+  };
+
+  const handleSetDefault = async (name: string) => {
+    try {
+      await setDefaultProvider(name);
+      toast("Default provider set", { variant: "success" });
+    } catch (err) {
+      toast("Failed to set default", { description: String(err), variant: "error" });
+    }
+  };
+
+  return (
+    <div className="settings-section">
+      <h3 className="settings-section-title">AI Providers</h3>
+
+      {!showAdd && (
+        <button
+          className="btn btn--primary btn--sm"
+          onClick={() => {
+            setEditName("");
+            setEditConfig({ ...defaultProviderConfig });
+            setShowAdd(true);
+          }}
+        >
+          Add Provider
+        </button>
+      )}
+
+      {showAdd && (
+        <div className="settings-card" style={{ marginTop: 12 }}>
+          <div className="settings-card-header">
+            <span className="settings-card-title">
+              {providers[editName] ? `Edit: ${editName}` : "New Provider"}
+            </span>
+          </div>
+          <div className="settings-form">
+            {!providers[editName] && (
+              <label className="settings-form-label">
+                Name
+                <input
+                  className="input input--sm"
+                  placeholder="e.g. my-gpt4"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </label>
+            )}
+            <label className="settings-form-label">
+              Provider Type
+              <select
+                className="input input--sm"
+                value={editConfig.provider_type}
+                onChange={(e) =>
+                  setEditConfig((c) => ({
+                    ...c,
+                    provider_type: e.target.value,
+                    model: e.target.value === "anthropic" ? "claude-sonnet-4-6" : "gpt-4o",
+                  }))
+                }
+              >
+                <option value="openai">OpenAI Compatible</option>
+                <option value="anthropic">Anthropic Compatible</option>
+              </select>
+            </label>
+            <label className="settings-form-label">
+              Base URL
+              <input
+                className="input input--sm"
+                placeholder={
+                  editConfig.provider_type === "anthropic"
+                    ? "https://api.anthropic.com"
+                    : "https://api.openai.com/v1"
+                }
+                value={editConfig.url}
+                onChange={(e) => setEditConfig((c) => ({ ...c, url: e.target.value }))}
+              />
+            </label>
+            <label className="settings-form-label">
+              API Key
+              <input
+                className="input input--sm"
+                type="password"
+                placeholder="sk-..."
+                value={editConfig.token}
+                onChange={(e) => setEditConfig((c) => ({ ...c, token: e.target.value }))}
+              />
+            </label>
+            <label className="settings-form-label">
+              Model
+              <input
+                className="input input--sm"
+                placeholder="gpt-4o"
+                value={editConfig.model}
+                onChange={(e) => setEditConfig((c) => ({ ...c, model: e.target.value }))}
+              />
+            </label>
+            <label className="settings-form-label">
+              Max Turns
+              <input
+                className="input input--sm"
+                type="number"
+                min={1}
+                max={50}
+                value={editConfig.max_turns}
+                onChange={(e) =>
+                  setEditConfig((c) => ({ ...c, max_turns: parseInt(e.target.value) || 10 }))
+                }
+              />
+            </label>
+            <div className="settings-form-actions">
+              <button className="btn btn--primary btn--sm" onClick={handleSave}>
+                Save
+              </button>
+              <button
+                className="btn btn--sm"
+                onClick={() => {
+                  setShowAdd(false);
+                  setEditName("");
+                  setEditConfig({ ...defaultProviderConfig });
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {entries.length === 0 && !showAdd && (
+        <span className="empty-hint" style={{ marginTop: 8, display: "block" }}>
+          No AI providers configured
+        </span>
+      )}
+
+      {entries.map(([name, config]) => (
+        <div key={name} className="settings-card" style={{ marginTop: 8 }}>
+          <div className="settings-card-header">
+            <div>
+              <span className="settings-card-title">{name}</span>
+              {defaultProvider === name && (
+                <span
+                  className="badge badge--primary"
+                  style={{ marginLeft: 8, fontSize: 10, padding: "2px 6px" }}
+                >
+                  Default
+                </span>
+              )}
+            </div>
+            <span className="settings-card-desc">
+              {config.provider_type} / {config.model}
+            </span>
+          </div>
+          <div className="settings-provider-actions">
+            {defaultProvider !== name && (
+              <button
+                className="btn btn--sm"
+                onClick={() => handleSetDefault(name)}
+              >
+                Set Default
+              </button>
+            )}
+            <button
+              className="btn btn--sm"
+              onClick={() => handleEdit(name, config)}
+            >
+              Edit
+            </button>
+            <button
+              className="btn btn--sm btn--danger"
+              onClick={() => handleDelete(name)}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function SettingsPage() {
   const theme = useThemeStore((s) => s.theme);
@@ -68,6 +307,8 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <AIProviderSection />
     </div>
   );
 }

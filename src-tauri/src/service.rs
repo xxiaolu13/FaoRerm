@@ -30,6 +30,7 @@ pub enum ConfigError {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct FaoConfig {
+    #[serde(default)]
     pub ai: AIConfig,
 
     #[serde(rename = "global_blacklist")]
@@ -62,9 +63,42 @@ impl Default for AppearanceConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct AIConfig {
+    #[serde(default)]
+    pub providers: BTreeMap<String, ProviderConfig>,
+    #[serde(default)]
+    pub default_provider: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProviderConfig {
+    pub provider_type: String,
     pub url: String,
     pub token: String,
     pub model: String,
+    #[serde(default = "default_max_turns")]
+    pub max_turns: u32,
+    #[serde(default)]
+    pub thinking_budget: Option<u32>,
+    #[serde(default)]
+    pub extra_system_prompt: Option<String>,
+}
+
+fn default_max_turns() -> u32 {
+    10
+}
+
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            provider_type: "openai".to_string(),
+            url: String::new(),
+            token: String::new(),
+            model: "gpt-4o".to_string(),
+            max_turns: 10,
+            thinking_budget: None,
+            extra_system_prompt: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -168,6 +202,39 @@ impl ConfigManager {
         self.save()
     }
 
+    pub fn get_ai_providers(&self) -> BTreeMap<String, ProviderConfig> {
+        self.data.read().ai.providers.clone()
+    }
+
+    pub fn upsert_ai_provider(&self, name: &str, config: ProviderConfig) -> Result<(), ConfigError> {
+        self.data.write().ai.providers.insert(name.to_string(), config);
+        self.save()
+    }
+
+    pub fn delete_ai_provider(&self, name: &str) -> Result<(), ConfigError> {
+        let mut guard = self.data.write();
+        if guard.ai.providers.remove(name).is_none() {
+            drop(guard);
+            return Err(ConfigError::ServerNotFound(name.to_string()));
+        }
+        if guard.ai.default_provider == name {
+            guard.ai.default_provider = String::new();
+        }
+        drop(guard);
+        self.save()
+    }
+
+    pub fn set_default_provider(&self, name: &str) -> Result<(), ConfigError> {
+        let guard = self.data.read();
+        if !guard.ai.providers.contains_key(name) {
+            drop(guard);
+            return Err(ConfigError::ServerNotFound(name.to_string()));
+        }
+        drop(guard);
+        self.data.write().ai.default_provider = name.to_string();
+        self.save()
+    }
+
     pub fn upsert_server(&self, key: &str, server: ServerConfig) -> Result<(), ConfigError> {
         self.data.write().server.insert(key.to_string(), server);
         self.save()
@@ -242,51 +309,49 @@ pub struct SessionHandles {
     pub channels: Arc<Mutex<HashSet<String>>>,
 }
 
-// 暂时通过 static 代替
-pub struct SessionRecordings{// 这里面Uuid都是session的id
-    tx: Arc<tokio::sync::Mutex<HashMap<Uuid,UnboundedSender<FRCEvent>>>>,
-    data: Arc<tokio::sync::Mutex<HashMap<Uuid,Bytes>>>,
-}
-impl SessionRecordings{
-    pub fn new() -> Self{
-        Self {
-            tx: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            data: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-        }
-    }
-}
 use crate::zmodem::ZmodemSession;
+use cersei_tools::permissions::PermissionDecision;
+
+#[derive(Clone)]
+pub struct ChannelCopilot {
+    pub active_provider: String,
+    pub conversation: Vec<cersei::prelude::Message>,
+    pub model: String,
+}
 
 #[derive(Clone)]
 pub struct Services {
     pub handles: Arc<Mutex<HashMap<String, SessionHandles>>>,
     pub auth_states: Arc<Mutex<HashMap<String, Arc<Mutex<SessionAuthState>>>>>,
-    pub recordings: Arc<Mutex<SessionRecordings>>,
     pub config: ConfigManager,
     pub master_password: Arc<Mutex<Option<String>>>,
     pub zmodem_sessions: Arc<Mutex<HashMap<String, ZmodemSession>>>,
+    pub copilots: Arc<Mutex<HashMap<String, ChannelCopilot>>>,
+    pub pending_confirms: Arc<dashmap::DashMap<Uuid, oneshot::Sender<PermissionDecision>>>,
+    pub copilot_cancel: Arc<dashmap::DashMap<String, tokio_util::sync::CancellationToken>>,
+    pub skills_dir: PathBuf,
 }
 
 impl Services {
     pub fn new() -> Result<Self> {
-
-        let recordings = SessionRecordings::new();
-        let recordings = Arc::new(Mutex::new(recordings));
-
-
         let proj_dirs = ProjectDirs::from("", "", "FaoRerm")
             .ok_or(ConfigError::ServerNotFound("path not found".to_string()))?;
         let config_path = proj_dirs.config_dir().join("faoconfig.toml");
         let cm = ConfigManager::load_or_default(config_path)?;
 
+        let skills_dir = proj_dirs.config_dir().join("skills");
+        crate::copilot::skills::ensure_skills_dir(&skills_dir)?;
+
         Ok(Self {
             handles: Arc::new(Mutex::new(HashMap::new())),
             auth_states: Arc::new(Mutex::new(HashMap::new())),
-            recordings,
             config: cm.clone(),
             master_password: Arc::new(Mutex::new(None)),
             zmodem_sessions: Arc::new(Mutex::new(HashMap::new())),
+            copilots: Arc::new(Mutex::new(HashMap::new())),
+            pending_confirms: Arc::new(dashmap::DashMap::new()),
+            copilot_cancel: Arc::new(dashmap::DashMap::new()),
+            skills_dir,
         })
     }
-    
 }
