@@ -102,6 +102,10 @@ Go to **Management > Settings** to switch between **System** (follows OS), **Dar
 | **`Ctrl+Shift+P`** | Toggle command panel |
 | **`Ctrl+Shift+C`** | Copy terminal selection |
 
+## Friendly Links
+
+* [LINUX DO](https://linux.do) - An active Linux and technology community.
+
 ## License
 
 [Apache 2.0](LICENSE)
