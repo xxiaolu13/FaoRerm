@@ -33,6 +33,18 @@ Bundles output to `src-tauri/target/release/bundle/`.
 
 ## Usage
 
+### AI Copilot Configuration
+Configure in Settings → AI Provider:
+
+- Name — Provider name (custom), e.g. my-claude
+- Type — API format: anthropic or openai . Claude → anthropic; GPT/DeepSeek/Ollama → openai
+- URL — API endpoint, leave empty for official default. DeepSeek: https://api.deepseek.com/v1 , Ollama: http://localhost:11434/v1
+- API Key — API key, e.g. sk-xxx
+- Model — Model name, e.g. claude-sonnet-4-6 , gpt-4o , deepseek-chat
+- Max Turns — Max agent turns per query, default 10
+After adding, click Set Default to activate.
+
+
 ### Master Password
 
 On first launch, you'll be prompted to set a master password. This password encrypts all stored server credentials (AES-256-GCM). After a restart or after locking, enter this password to unlock the app.
