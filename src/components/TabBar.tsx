@@ -24,6 +24,8 @@ export function TabBar() {
 
     if (tab.channelId) {
       invoke("ssh_close_channel", { sessionId: tab.sessionId, channelId: tab.channelId }).catch(() => {});
+    } else if (tab.status === "connecting") {
+      invoke("ssh_disconnect", { sessionId: tab.sessionId }).catch(() => {});
     }
 
     if (hostKeyModal?.sessionId === tab.sessionId) hideHostKeyModal();
@@ -191,6 +193,8 @@ export function TabContextMenu() {
     const t = tabs.get(tabId);
     if (t?.channelId) {
       invoke("ssh_close_channel", { sessionId, channelId: t.channelId }).catch(() => {});
+    } else if (t?.status === "connecting") {
+      invoke("ssh_disconnect", { sessionId }).catch(() => {});
     }
     if (hostKeyModal?.sessionId === sessionId) hideHostKeyModal();
     if (keyboardAuthModal?.sessionId === sessionId) hideKeyboardAuthModal();
@@ -203,6 +207,8 @@ export function TabContextMenu() {
       const t = tabs.get(tid);
       if (t?.channelId) {
         invoke("ssh_close_channel", { sessionId: t.sessionId, channelId: t.channelId }).catch(() => {});
+      } else if (t?.status === "connecting") {
+        invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
       }
       removeTab(tid);
     }
@@ -215,6 +221,8 @@ export function TabContextMenu() {
       const t = tabs.get(tid);
       if (t?.channelId) {
         invoke("ssh_close_channel", { sessionId: t.sessionId, channelId: t.channelId }).catch(() => {});
+      } else if (t?.status === "connecting") {
+        invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
       }
       removeTab(tid);
     }

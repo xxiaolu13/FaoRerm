@@ -10,8 +10,13 @@ use crate::service::Services;
 use crate::enter::crud::*;
 use crate::enter::screen::*;
 use crate::enter::ssh::*;
+use crate::copilot::SessionRecordings;
+
 pub static FAO_SERVICES: Lazy<Arc<Mutex<Services>>> =
     Lazy::new(|| Arc::new(Mutex::new(Services::new().unwrap())));
+
+pub static FAO_RECORD: Lazy<Arc<SessionRecordings>> =
+    Lazy::new(|| Arc::new(SessionRecordings::new()));
 
 
 #[tauri::command]

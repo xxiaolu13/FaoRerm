@@ -101,6 +101,13 @@ impl Tool for TerminalTypeTool {
             return ToolResult::error("Command cannot be empty");
         }
 
+        let ch_id = match Uuid::parse_str(&self.channel_id) {
+            Ok(id) => id,
+            Err(e) => return ToolResult::error(format!("Invalid channel_id: {}", e)),
+        };
+
+        let before_content = crate::FAO_RECORD.get_content(&ch_id);
+
         {
             let services = self.services.lock().await;
 
@@ -111,11 +118,6 @@ impl Tool for TerminalTypeTool {
                     pattern
                 ));
             }
-
-            let ch_id = match Uuid::parse_str(&self.channel_id) {
-                Ok(id) => id,
-                Err(e) => return ToolResult::error(format!("Invalid channel_id: {}", e)),
-            };
 
             let send_result = {
                 let handles_guard = services.handles.lock().await;
@@ -149,6 +151,76 @@ impl Tool for TerminalTypeTool {
 
         tokio::time::sleep(Duration::from_millis(input.timeout_ms.min(300_000))).await;
 
-        ToolResult::success(format!("Typed into terminal: {}\n\n(wait_for_output is not yet supported)", command))
+        let after_content = crate::FAO_RECORD.get_content(&ch_id);
+
+        let new_output = match (&before_content, &after_content) {
+            (Some(before), Some(after)) => {
+                if after.len() > before.len() {
+                    after[before.len()..].to_string()
+                } else {
+                    after.clone()
+                }
+            }
+            (None, Some(after)) => after.clone(),
+            _ => return ToolResult::success(format!("Typed into terminal: {}\n\n(no terminal recording available)", command)),
+        };
+
+        ToolResult::success(format!("Command output:\n{}", new_output))
+    }
+}
+
+pub struct ReadTerminalTool {
+    pub channel_id: String,
+}
+
+impl ReadTerminalTool {
+    pub fn new(channel_id: String) -> Self {
+        Self { channel_id }
+    }
+}
+
+#[async_trait]
+impl Tool for ReadTerminalTool {
+    fn name(&self) -> &str {
+        "ReadTerminal"
+    }
+
+    fn description(&self) -> &str {
+        "Read the current content of the terminal. Returns the recent terminal output \
+         (last ~50KB, ANSI escapes stripped). Use this to see what's currently on screen \
+         or to check command output after using TerminalType."
+    }
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::None
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Custom
+    }
+
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
+    async fn execute(&self, _input: Value, _ctx: &ToolContext) -> ToolResult {
+        let ch_id = match Uuid::parse_str(&self.channel_id) {
+            Ok(id) => id,
+            Err(e) => return ToolResult::error(format!("Invalid channel_id: {}", e)),
+        };
+
+        match crate::FAO_RECORD.get_content(&ch_id) {
+            Some(content) => {
+                if content.is_empty() {
+                    ToolResult::success("Terminal is empty (no output yet).".to_string())
+                } else {
+                    ToolResult::success(format!("Terminal content:\n{}", content))
+                }
+            }
+            None => ToolResult::error("No recording found for this channel. The terminal may not be connected."),
+        }
     }
 }

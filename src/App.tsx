@@ -19,6 +19,8 @@ import { BlacklistModal } from "./components/modals/BlacklistModal";
 import { ZmodemTransferBar, ZmodemEventHandler } from "./components/ZmodemTransferBar";
 import { toast } from "./stores/toastStore";
 import { terminalManager } from "./terminal/terminalManager";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import "./App.css";
 
 function ActivityBar() {
@@ -206,9 +208,9 @@ function RightDrawer() {
                         <pre className="ai-thinking-content">{msg.thinking}</pre>
                       </details>
                     )}
-                    {msg.toolCalls.length > 0 && (
+                    {msg.toolCalls.filter(tc => tc.name !== "ReadTerminal").length > 0 && (
                       <div className="ai-tool-calls">
-                        {msg.toolCalls.map((tc) => (
+                        {msg.toolCalls.filter(tc => tc.name !== "ReadTerminal").map((tc) => (
                           <div key={tc.id} className={`ai-tool-call ai-tool-call--${tc.status}`}>
                             <div className="ai-tool-call-header">
                               <span className="ai-tool-call-name">{tc.name}</span>
@@ -231,7 +233,9 @@ function RightDrawer() {
                       </div>
                     )}
                     {msg.content && (
-                      <pre className="ai-message-content">{msg.content}</pre>
+                      <div className="ai-message-content">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      </div>
                     )}
                     {msg.error && (
                       <div className="ai-message-error">{msg.error}</div>

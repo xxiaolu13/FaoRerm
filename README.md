@@ -1,6 +1,9 @@
 # FaoRerm
 
 A cross-platform SSH client built with Tauri, xterm.js, and russh.
+
+Currently, AI capabilities are undergoing iteration, and the current version of AI is only a test version.
+
 ## photo
 <img width="1704" height="983" alt="图片" src="https://github.com/user-attachments/assets/dcb0bffe-8d48-4b43-ac36-7f92487647c7" />
 <img width="1701" height="989" alt="图片" src="https://github.com/user-attachments/assets/9b88c6c6-aa0b-4502-a652-9756f4818030" />

@@ -64,6 +64,58 @@ fn emit(app: &AppHandle, session_id: &str, channel_id: Option<&str>, kind: SshEv
     });
 }
 
+fn strip_ansi_escapes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if let Some(&next) = chars.peek() {
+                match next {
+                    '[' => {
+                        chars.next();
+                        while let Some(&nc) = chars.peek() {
+                            chars.next();
+                            if nc.is_ascii_alphabetic() || nc == '@' {
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+                    ']' => {
+                        chars.next();
+                        while let Some(&nc) = chars.peek() {
+                            chars.next();
+                            if nc == '\x07' || nc == '\x1b' {
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+                    _ => {
+                        chars.next();
+                        continue;
+                    }
+                }
+            }
+        } else if c == '\r' {
+            if chars.peek() == Some(&'\n') {
+                result.push('\n');
+                chars.next();
+            } else {
+                result.push('\r');
+            }
+        } else if c == '\x08' {
+            result.push('\x08');
+        } else if c == '\x07' {
+        } else if c.is_control() && c != '\n' && c != '\t' {
+            continue;
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 fn spawn_event_forwarder(
     app_handle: AppHandle,
     session_id: Uuid,
@@ -142,6 +194,10 @@ fn spawn_event_forwarder(
                         channel_id: ch_str.clone(),
                         data: data.to_vec(),
                     });
+
+                    let text = String::from_utf8_lossy(&data);
+                    let clean = strip_ansi_escapes(&text);
+                    crate::FAO_RECORD.append(&channel_id, &clean);
                 }
                 FRCEvent::State(state) => {
                     let state_str = match state {
@@ -168,6 +224,7 @@ fn spawn_event_forwarder(
                             h.channels.lock().await.insert(ch_str.clone());
                         };
                     }
+                    crate::FAO_RECORD.register(channel_id);
                     emit(&app_handle, &sid, Some(&ch_str), SshEventKind::ChannelSuccess);
                 }
                 FRCEvent::Eof(channel_id) => {
@@ -191,6 +248,7 @@ fn spawn_event_forwarder(
                             }),
                         );
                     }
+                    crate::FAO_RECORD.unregister(&channel_id);
                     emit(&app_handle, &sid, Some(&ch_str), SshEventKind::ChannelClose);
                 }
                 FRCEvent::ExitStatus(channel_id, exit_status) => {
@@ -327,8 +385,9 @@ pub async fn ssh_disconnect(session_id: String) -> Result<(), String> {
     let guard = handles_guard.lock().await;
 
     if let Some(session) = guard.get(&session_id) {
+        let _ = session.abort_tx.send(());
         let _ = session.command_tx.send((FRCCommand::Disconnect, None));
-        info!(session_id = %session_id, "Disconnect command sent");
+        info!(session_id = %session_id, "Disconnect and abort sent");
     }
     Ok(())
 }
