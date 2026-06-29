@@ -16,7 +16,7 @@ export function ServerList() {
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
   const addTab = useTerminalStore((s) => s.addTab);
   const setChannel = useTerminalStore((s) => s.setChannel);
-  const setActiveSection = useUIStore((s) => s.setActiveSection);
+  const enterServers = useUIStore((s) => s.enterServers);
 
   useEffect(() => {
     checkMasterPassword().then(() => {
@@ -68,7 +68,7 @@ export function ServerList() {
         status: "connecting",
       });
 
-      setActiveSection("servers");
+      enterServers();
 
       toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
     } catch (err) {

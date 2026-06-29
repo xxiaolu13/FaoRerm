@@ -2,14 +2,9 @@ import { ServerList } from "./ServerList";
 import { useUIStore } from "../stores/uiStore";
 
 export function Sidebar() {
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const activeSection = useUIStore((s) => s.activeSection);
   const managementTab = useUIStore((s) => s.managementTab);
   const setManagementTab = useUIStore((s) => s.setManagementTab);
-
-  if (sidebarCollapsed) {
-    return null;
-  }
 
   if (activeSection === "management") {
     return (

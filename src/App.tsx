@@ -1,13 +1,26 @@
 import { useEffect, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import {
+  Group,
+  Panel,
+  Separator,
+  usePanelRef,
+} from "react-resizable-panels";
 import { useTerminalStore } from "./stores/terminalStore";
 import { useUIStore } from "./stores/uiStore";
 import { useServerStore } from "./stores/serverStore";
 import { useSshEvents } from "./hooks/useSshEvents";
 import { useThemeStore } from "./stores/themeStore";
+import { useTerminalSettingsStore } from "./stores/terminalSettingsStore";
+import {
+  DEFAULT_TERMINAL_SETTINGS,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+} from "./terminal/terminalSettings";
 import { Sidebar } from "./components/Sidebar";
 import { TabBar, TabContextMenu } from "./components/TabBar";
 import { TerminalView } from "./components/TerminalView";
+import { TerminalContextMenu } from "./components/TerminalContextMenu";
 import { QuickCommands } from "./components/QuickCommands";
 import { ManagementPage } from "./components/ManagementPage";
 import { LockScreen } from "./components/LockScreen";
@@ -62,7 +75,7 @@ function ActivityBar() {
           <button
             className="activity-bar-btn"
             onClick={activateLockScreen}
-            title="Lock App (Ctrl+L)"
+            title="Lock App"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <rect x="5" y="9" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
@@ -364,8 +377,8 @@ function TerminalArea() {
             <h3 className="dashboard-section-title">Keyboard Shortcuts</h3>
             <div className="shortcut-list">
               <div className="shortcut-item">
-                <kbd className="shortcut-key">Ctrl+L</kbd>
-                <span className="shortcut-desc">Lock application</span>
+                <kbd className="shortcut-key">Ctrl+Shift+K</kbd>
+                <span className="shortcut-desc">Clear terminal (keep history)</span>
               </div>
               <div className="shortcut-item">
                 <kbd className="shortcut-key">Ctrl+Shift+P</kbd>
@@ -387,7 +400,7 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
   const addTab = useTerminalStore((s) => s.addTab);
   const setChannel = useTerminalStore((s) => s.setChannel);
-  const setActiveSection = useUIStore((s) => s.setActiveSection);
+  const enterServers = useUIStore((s) => s.enterServers);
 
   const handleClick = async () => {
     if (!masterPasswordSet) {
@@ -422,7 +435,7 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
         status: "connecting",
       });
 
-      setActiveSection("servers");
+      enterServers();
 
       toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
     } catch (err) {
@@ -461,10 +474,6 @@ function GlobalKeyboardShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "l") {
-        e.preventDefault();
-        if (masterPasswordSet) activateLockScreen();
-      }
       if (e.ctrlKey && e.shiftKey && e.key === "P") {
         e.preventDefault();
         toggleRightDrawer();
@@ -481,6 +490,30 @@ function GlobalKeyboardShortcuts() {
           }
         }
       }
+
+      // 字体缩放：Ctrl/Cmd + +/-/0
+      // setFontSize 内部已 broadcast → applySettings → fitAndNotify，
+      // 字号变即触发 fit + PTY 同步，无需额外处理。
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.altKey) {
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          const ts = useTerminalSettingsStore.getState();
+          const next = Math.min(FONT_SIZE_MAX, ts.fontSize + 1);
+          if (next !== ts.fontSize) ts.setFontSize(next);
+        } else if (e.key === "-") {
+          e.preventDefault();
+          const ts = useTerminalSettingsStore.getState();
+          const next = Math.max(FONT_SIZE_MIN, ts.fontSize - 1);
+          if (next !== ts.fontSize) ts.setFontSize(next);
+        } else if (e.key === "0") {
+          e.preventDefault();
+          const ts = useTerminalSettingsStore.getState();
+          if (ts.fontSize !== DEFAULT_TERMINAL_SETTINGS.fontSize) {
+            ts.setFontSize(DEFAULT_TERMINAL_SETTINGS.fontSize);
+          }
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -492,12 +525,49 @@ function GlobalKeyboardShortcuts() {
 export default function App() {
   useSshEvents();
   const loadTheme = useThemeStore((s) => s.loadTheme);
+  const loadTerminalSettings = useTerminalSettingsStore((s) => s.load);
   const initConfirmListener = useAIStore((s) => s.initConfirmListener);
   const loadProviders = useAIStore((s) => s.loadProviders);
+
+  // 侧边栏 Panel 折叠/展开由 sidebarCollapsed 状态联动（imperative API）。
+  // 保留原有 collapse 语义，拖拽调整由 react-resizable-panels v4 接管。
+  const sidebarPanelRef = usePanelRef();
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
 
   useEffect(() => {
     loadTheme();
   }, [loadTheme]);
+
+  // 终端动态配置加载（字号/字体/配色等，持久化在 localStorage）。
+  useEffect(() => {
+    loadTerminalSettings();
+  }, [loadTerminalSettings]);
+
+  // sidebarCollapsed 变化时折叠/展开 Sidebar Panel。
+  useEffect(() => {
+    const panel = sidebarPanelRef.current;
+    if (!panel) return;
+    if (sidebarCollapsed) panel.collapse();
+    else panel.expand();
+  }, [sidebarCollapsed]);
+
+  // 全局去网页化：拦截浏览器默认右键菜单，仅放行输入控件的原生菜单。
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      const isEditable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (target as HTMLElement).isContentEditable;
+      if (!isEditable) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => window.removeEventListener("contextmenu", onContextMenu);
+  }, []);
 
   useEffect(() => {
     loadProviders().catch(() => {});
@@ -511,17 +581,33 @@ export default function App() {
       <GlobalKeyboardShortcuts />
       <ZmodemEventHandler />
       <ActivityBar />
-      <Sidebar />
-      <main className="main-content">
-        <TabBar />
-        <ZmodemTransferBar />
-        <TerminalArea />
-        <RightDrawerToggle />
-      </main>
+      <Group orientation="horizontal" className="app-panels">
+        <Panel
+          panelRef={sidebarPanelRef}
+          id="sidebar"
+          defaultSize="18"
+          minSize="12"
+          maxSize="32"
+          collapsible
+          collapsedSize={0}
+        >
+          <Sidebar />
+        </Panel>
+        <Separator className="panel-resize-handle" />
+        <Panel id="main" minSize="30">
+          <main className="main-content">
+            <TabBar />
+            <ZmodemTransferBar />
+            <TerminalArea />
+            <RightDrawerToggle />
+          </main>
+        </Panel>
+      </Group>
       <RightDrawer />
 
       <LockScreen />
       <TabContextMenu />
+      <TerminalContextMenu />
 
       <ServerModal />
       <MasterPasswordModal />

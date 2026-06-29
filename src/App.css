@@ -24,6 +24,42 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
 
+  /* === 终端设计令牌（单一主题源） ===
+   * 字号/字族/行高：由 terminalSettingsStore 动态注入（首屏回退默认值见下）。
+   * 配色：由 terminalSettingsStore.applySchemeToCSSVars 在切换配色方案时写入。
+   * xterm 与外壳 chrome 均通过 CSS 变量读取，杜绝双源割裂。
+   */
+  --term-font-size: 14px;
+  --term-font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, monospace;
+  --term-line-height: 1.1;
+  --term-letter-spacing: 0;
+
+  /* 终端语义配色（auto/dark 默认；light 在 [data-theme="light"] 覆盖） */
+  --term-bg: #1e1e1e;
+  --term-fg: #d4d4d4;
+  --term-cursor: #f5e0dc;
+  --term-cursor-accent: #1e1e1e;
+  --term-selection-bg: #3a3a3a;
+  --term-selection-fg: #d4d4d4;
+
+  /* ANSI 16 色 */
+  --ansi-black: #3a3a3a;
+  --ansi-red: #f38ba8;
+  --ansi-green: #639f5d;
+  --ansi-yellow: #f9e2af;
+  --ansi-blue: #89b4fa;
+  --ansi-magenta: #f5c2e7;
+  --ansi-cyan: #54ae9f;
+  --ansi-white: #d4d4d4;
+  --ansi-bright-black: #4a4a4a;
+  --ansi-bright-red: #f38ba8;
+  --ansi-bright-green: #639f5d;
+  --ansi-bright-yellow: #f9e2af;
+  --ansi-bright-blue: #89b4fa;
+  --ansi-bright-magenta: #f5c2e7;
+  --ansi-bright-cyan: #54ae9f;
+  --ansi-bright-white: #a0a0a0;
+
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -59,6 +95,32 @@
   --warning: #d97706;
   --warning-bg: rgba(217, 119, 6, 0.08);
 
+  /* 终端语义配色（light 覆盖） */
+  --term-bg: #f7f7f5;
+  --term-fg: #1c1917;
+  --term-cursor: #dc2626;
+  --term-cursor-accent: #f7f7f5;
+  --term-selection-bg: #bfdbfe;
+  --term-selection-fg: #1c1917;
+
+  /* ANSI 16 色（light） */
+  --ansi-black: #a8a29e;
+  --ansi-red: #dc2626;
+  --ansi-green: #15803d;
+  --ansi-yellow: #d97706;
+  --ansi-blue: #2563eb;
+  --ansi-magenta: #c026d3;
+  --ansi-cyan: #0891b2;
+  --ansi-white: #1c1917;
+  --ansi-bright-black: #78716c;
+  --ansi-bright-red: #dc2626;
+  --ansi-bright-green: #15803d;
+  --ansi-bright-yellow: #d97706;
+  --ansi-bright-blue: #2563eb;
+  --ansi-bright-magenta: #c026d3;
+  --ansi-bright-cyan: #0891b2;
+  --ansi-bright-white: #57534e;
+
   color-scheme: light;
 }
 
@@ -93,6 +155,36 @@ body {
   height: 100%;
   width: 100%;
   position: relative;
+}
+
+.app-panels {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* 面板拖拽分隔条：1px 细线，悬停/拖拽时变 accent 色 + 2px。
+ * 热区用 ::before 扩大到 7px，避免难以点击。
+ * 设计原则（design-taste-frontend §5）：拖拽中只改 flex-basis，GPU 友好。 */
+.panel-resize-handle {
+  width: 1px;
+  background: var(--border-color, var(--border));
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s, width 0.15s;
+}
+
+.panel-resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle[data-resize-handle-active] {
+  background: var(--accent);
+  width: 2px;
 }
 
 .activity-bar {
@@ -157,11 +249,9 @@ body {
 }
 
 .sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
+  width: 100%;
   height: 100%;
   background: var(--bg-secondary);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1444,7 +1534,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  max-width: 960px;
+  max-width: 56rem; /* 与 ConfigLayout 统一，消除 960 vs 640 割裂 */
   margin: 0 auto;
   width: 100%;
 }
@@ -1498,11 +1588,12 @@ body {
 .mgmt-page-body {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  /* padding 由内部 ConfigLayout 统一提供，避免双层。 */
+  padding: 0;
 }
 
 .mgmt-section {
-  max-width: 800px;
+  /* max-width 由 ConfigLayout 统一提供（max-w-4xl），消除 800 vs 640 割裂。 */
 }
 
 .mgmt-section-header {
@@ -1674,9 +1765,29 @@ body {
   margin-top: 4px;
 }
 
+/* === ConfigLayout：配置页统一容器 ===
+ * 设计原则（minimalist-ui / redesign-existing-projects）：
+ * 居中对齐 max-w-4xl、统一 padding、消除内联 style。
+ * 所有 Settings / Management 子页面通过 ConfigLayout 包裹。 */
+.config-layout {
+  max-width: 56rem; /* max-w-4xl ≈ 896px */
+  margin: 0 auto;
+  padding: 32px 32px 48px;
+  width: 100%;
+}
+
+.config-layout-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 24px;
+}
+
 .settings-page {
-  padding: 24px 32px;
-  max-width: 640px;
+  /* padding/max-width 由 ConfigLayout 统一提供，避免双层约束。 */
+  padding: 0;
+  max-width: none;
 }
 
 .settings-section {
@@ -2491,6 +2602,202 @@ body {
   transition: width 0.15s ease;
   background: var(--accent);
 }
+
+/* ============================================================
+ * 终端内容右键菜单（桌面级）
+ * ============================================================ */
+.context-menu--terminal {
+  min-width: 188px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), 0 0 0 1px var(--border);
+  animation: contextMenuIn 0.08s ease;
+  user-select: none;
+}
+
+@keyframes contextMenuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-group {
+  display: contents;
+}
+
+.context-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.context-menu-item-label {
+  flex: 1;
+  text-align: left;
+  font-size: 12.5px;
+}
+
+.context-menu-item--danger {
+  color: var(--danger);
+}
+
+.context-menu-item--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+/* ============================================================
+ * 终端外观设置（SettingsPage）
+ * ============================================================ */
+.settings-form-value {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  align-self: flex-end;
+}
+
+.settings-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.settings-segmented-btn {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.settings-segmented-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.settings-segmented-btn--active {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border: none;
+  border-radius: 9px;
+  background: var(--bg-surface-hover);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transition: transform 0.15s ease;
+}
+
+.toggle--on {
+  background: var(--accent);
+}
+
+.toggle--on::after {
+  transform: translateX(14px);
+  background: var(--bg-primary);
+}
+
+.settings-scheme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.settings-scheme-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+  place-items: center;
+}
+
+.settings-scheme-btn:hover {
+  border-color: var(--border-light);
+  background: var(--bg-surface-hover);
+}
+
+.settings-scheme-btn--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  color: var(--text-primary);
+}
+
+.settings-scheme-swatch {
+  width: 100%;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--bg-primary), var(--bg-surface));
+}
+
+.settings-scheme-swatch--auto {
+  background: linear-gradient(135deg, #1e1e1e 0 50%, #f5f5f4 50% 100%);
+}
+
+.settings-scheme-label {
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* 终端容器：确保高 DPI 下不出现模糊边距。 */
+.terminal-container {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-container .xterm {
+  padding: 6px 8px;
+}
+
+/* Tab 关闭按钮居中：用 place-items 替代不稳定的 margin。 */
+.tab-close {
+  place-items: center;
+}
+
 
 .zmodem-bar-fill--upload {
   background: var(--accent);

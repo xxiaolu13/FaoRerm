@@ -16,7 +16,7 @@ export function TabBar() {
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
   const showContextMenu = useUIStore((s) => s.showContextMenu);
-  const setActiveSection = useUIStore((s) => s.setActiveSection);
+  const enterServers = useUIStore((s) => s.enterServers);
 
   const handleClose = (tabId: string) => {
     const tab = tabs.get(tabId);
@@ -35,13 +35,15 @@ export function TabBar() {
     toast("Tab closed", { variant: "default", duration: 2000 });
   };
 
+  // 仅切换 Tab，绝不触发侧边栏 toggle（穿透 Bug 修复）。
   const handleTabClick = (tabId: string) => {
     setActiveTab(tabId);
-    setActiveSection("servers");
+    enterServers();
   };
 
   const handleContextMenu = (e: React.MouseEvent, tabId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     const tab = tabs.get(tabId);
     if (!tab) return;
     showContextMenu(e.clientX, e.clientY, tabId, tab.sessionId, tab.serverId);

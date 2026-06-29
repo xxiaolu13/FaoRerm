@@ -3,6 +3,7 @@ import { useServerStore } from "../stores/serverStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
 import { SettingsPage } from "./SettingsPage";
+import { ConfigLayout } from "./ConfigLayout";
 
 function QuickCommandsManagement() {
   const quickCommands = useServerStore((s) => s.quickCommands);
@@ -69,7 +70,7 @@ function QuickCommandsManagement() {
   };
 
   return (
-    <div className="mgmt-section">
+    <ConfigLayout className="mgmt-section">
       <div className="mgmt-section-header">
         <h3 className="mgmt-section-title">Quick Commands</h3>
         <span className="mgmt-section-count">{entries.length} commands</span>
@@ -177,7 +178,7 @@ function QuickCommandsManagement() {
           </div>
         ))}
       </div>
-    </div>
+    </ConfigLayout>
   );
 }
 
@@ -204,7 +205,7 @@ function BlacklistManagement() {
   const items = blacklist?.contains || [];
 
   return (
-    <div className="mgmt-section">
+    <ConfigLayout className="mgmt-section">
       <div className="mgmt-section-header">
         <h3 className="mgmt-section-title">Command Blacklist</h3>
         <span className="mgmt-section-count">{items.length} patterns</span>
@@ -251,7 +252,7 @@ function BlacklistManagement() {
           </div>
         ))}
       </div>
-    </div>
+    </ConfigLayout>
   );
 }
 

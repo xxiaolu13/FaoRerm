@@ -1,8 +1,16 @@
 import { useState } from "react";
 import { useThemeStore } from "../stores/themeStore";
+import { useTerminalSettingsStore } from "../stores/terminalSettingsStore";
+import {
+  BUILTIN_COLOR_SCHEMES,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  type CursorStyle,
+} from "../terminal/terminalSettings";
 import { useAIStore } from "../stores/aiStore";
 import { toast } from "../stores/toastStore";
 import type { ProviderConfig } from "../types";
+import { ConfigLayout } from "./ConfigLayout";
 
 type Theme = "system" | "dark" | "light";
 
@@ -248,6 +256,179 @@ function AIProviderSection() {
   );
 }
 
+const cursorStyleOptions: { value: CursorStyle; label: string }[] = [
+  { value: "block", label: "Block" },
+  { value: "underline", label: "Underline" },
+  { value: "bar", label: "Bar" },
+];
+
+const commonMonoFonts = [
+  "Cascadia Code",
+  "JetBrains Mono",
+  "Fira Code",
+  "SF Mono",
+  "Source Code Pro",
+  "Menlo",
+  "Consolas",
+  "Monaco",
+  "DejaVu Sans Mono",
+];
+
+function TerminalAppearanceSection() {
+  const fontSize = useTerminalSettingsStore((s) => s.fontSize);
+  const fontFamily = useTerminalSettingsStore((s) => s.fontFamily);
+  const cursorStyle = useTerminalSettingsStore((s) => s.cursorStyle);
+  const cursorBlink = useTerminalSettingsStore((s) => s.cursorBlink);
+  const colorSchemeId = useTerminalSettingsStore((s) => s.colorSchemeId);
+  const lineHeight = useTerminalSettingsStore((s) => s.lineHeight);
+  const copyOnSelect = useTerminalSettingsStore((s) => s.copyOnSelect);
+  const setFontSize = useTerminalSettingsStore((s) => s.setFontSize);
+  const setFontFamily = useTerminalSettingsStore((s) => s.setFontFamily);
+  const setCursorStyle = useTerminalSettingsStore((s) => s.setCursorStyle);
+  const setCursorBlink = useTerminalSettingsStore((s) => s.setCursorBlink);
+  const setColorScheme = useTerminalSettingsStore((s) => s.setColorScheme);
+  const setLineHeight = useTerminalSettingsStore((s) => s.setLineHeight);
+  const setCopyOnSelect = useTerminalSettingsStore((s) => s.setCopyOnSelect);
+  const reset = useTerminalSettingsStore((s) => s.reset);
+
+  return (
+    <div className="settings-section">
+      <h3 className="settings-section-title">Terminal</h3>
+
+      <div className="settings-card">
+        <div className="settings-card-header">
+          <span className="settings-card-title">Font</span>
+          <span className="settings-card-desc">Font size, family and line height</span>
+        </div>
+        <div className="settings-form">
+          <label className="settings-form-label">
+            Size
+            <span className="settings-form-value">{fontSize}px</span>
+            <input
+              type="range"
+              min={FONT_SIZE_MIN}
+              max={FONT_SIZE_MAX}
+              step={1}
+              value={fontSize}
+              onChange={(e) => setFontSize(parseInt(e.target.value))}
+            />
+          </label>
+          <label className="settings-form-label">
+            Family
+            <input
+              className="input input--sm"
+              list="mono-font-list"
+              value={fontFamily}
+              onChange={(e) => setFontFamily(e.target.value)}
+              placeholder="Select or enter a monospace font"
+            />
+            <datalist id="mono-font-list">
+              {commonMonoFonts.map((f) => (
+                <option key={f} value={f} />
+              ))}
+            </datalist>
+          </label>
+          <label className="settings-form-label">
+            Line height
+            <span className="settings-form-value">{lineHeight.toFixed(2)}</span>
+            <input
+              type="range"
+              min={1}
+              max={2}
+              step={0.05}
+              value={lineHeight}
+              onChange={(e) => setLineHeight(parseFloat(e.target.value))}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card-header">
+          <span className="settings-card-title">Cursor</span>
+          <span className="settings-card-desc">Cursor shape and blink</span>
+        </div>
+        <div className="settings-form">
+          <div className="settings-segmented">
+            {cursorStyleOptions.map((opt) => (
+              <button
+                key={opt.value}
+                className={`settings-segmented-btn ${cursorStyle === opt.value ? "settings-segmented-btn--active" : ""}`}
+                onClick={() => setCursorStyle(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <label className="settings-toggle-row">
+            <span>Blink cursor</span>
+            <button
+              className={`toggle ${cursorBlink ? "toggle--on" : ""}`}
+              role="switch"
+              aria-checked={cursorBlink}
+              onClick={() => setCursorBlink(!cursorBlink)}
+            />
+          </label>
+          <label className="settings-toggle-row">
+            <span>Copy on select</span>
+            <button
+              className={`toggle ${copyOnSelect ? "toggle--on" : ""}`}
+              role="switch"
+              aria-checked={copyOnSelect}
+              onClick={() => setCopyOnSelect(!copyOnSelect)}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card-header">
+          <span className="settings-card-title">Color Scheme</span>
+          <span className="settings-card-desc">Auto follows the app theme</span>
+        </div>
+        <div className="settings-scheme-grid">
+          <button
+            className={`settings-scheme-btn ${colorSchemeId === "auto" ? "settings-scheme-btn--active" : ""}`}
+            onClick={() => setColorScheme("auto")}
+            title="Follow app theme"
+          >
+            <span className="settings-scheme-swatch settings-scheme-swatch--auto" />
+            <span className="settings-scheme-label">Auto</span>
+          </button>
+          {BUILTIN_COLOR_SCHEMES.map((scheme) => (
+            <button
+              key={scheme.id}
+              className={`settings-scheme-btn ${colorSchemeId === scheme.id ? "settings-scheme-btn--active" : ""}`}
+              onClick={() => setColorScheme(scheme.id)}
+              title={scheme.name}
+            >
+              <span
+                className="settings-scheme-swatch"
+                style={{
+                  background: `linear-gradient(135deg, ${scheme.background} 0 50%, ${scheme.foreground} 50% 100%)`,
+                  boxShadow: `inset 0 0 0 1px ${scheme.blue}`,
+                }}
+              />
+              <span className="settings-scheme-label">{scheme.name}</span>
+            </button>
+          ))}
+        </div>
+        <div className="settings-form-actions">
+          <button
+            className="btn btn--sm"
+            onClick={() => {
+              reset();
+              toast("Terminal settings reset", { variant: "default" });
+            }}
+          >
+            Reset to defaults
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
@@ -258,7 +439,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="settings-page">
+    <ConfigLayout>
       <div className="settings-section">
         <h3 className="settings-section-title">Appearance</h3>
         <div className="settings-card">
@@ -308,7 +489,9 @@ export function SettingsPage() {
         </div>
       </div>
 
+      <TerminalAppearanceSection />
+
       <AIProviderSection />
-    </div>
+    </ConfigLayout>
   );
 }

@@ -48,11 +48,19 @@ export function QuickCommands() {
         <span className="empty-hint">No saved commands</span>
       )}
       {entries.map(([desc, cmd]) => (
-        <button
+        <div
           key={desc}
           className="quick-command-item"
           onClick={() => sendCommand(cmd)}
-          disabled={!activeSession}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              sendCommand(cmd);
+            }
+          }}
+          aria-disabled={!activeSession}
           title={activeSession ? `Send: ${cmd.replace(/\\n/g, " ↵ ")}` : "No active terminal"}
         >
           <div className="quick-command-info">
@@ -76,7 +84,7 @@ export function QuickCommands() {
               />
             </svg>
           </button>
-        </button>
+        </div>
       ))}
 
       {showAdd ? (

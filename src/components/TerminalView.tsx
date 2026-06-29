@@ -1,63 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { terminalManager } from "../terminal/terminalManager";
 import { useUIStore } from "../stores/uiStore";
 import { useTerminalStore } from "../stores/terminalStore";
 import { useThemeStore } from "../stores/themeStore";
-import "xterm/css/xterm.css";
-
-const darkTerminalTheme = {
-  background: "#1e1e1e",
-  foreground: "#d4d4d4",
-  cursor: "#f5e0dc",
-  cursorAccent: "#1e1e1e",
-  selectionBackground: "#3a3a3a",
-  selectionForeground: "#d4d4d4",
-  black: "#3a3a3a",
-  red: "#f38ba8",
-  green: "#639f5dff",
-  yellow: "#f9e2af",
-  blue: "#89b4fa",
-  magenta: "#f5c2e7",
-  cyan: "#54ae9fff",
-  white: "#d4d4d4",
-  brightBlack: "#4a4a4a",
-  brightRed: "#f38ba8",
-  brightGreen: "#639f5dff",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#54ae9fff",
-  brightWhite: "#a0a0a0",
-};
-
-const lightTerminalTheme = {
-  background: "#f5f5f4",
-  foreground: "#1c1917",
-  cursor: "#dc2626",
-  cursorAccent: "#f5f5f4",
-  selectionBackground: "#bfdbfe",
-  selectionForeground: "#1c1917",
-  black: "#a8a29e",
-  red: "#dc2626",
-  green: "#15803d",
-  yellow: "#d97706",
-  blue: "#2563eb",
-  magenta: "#c026d3",
-  cyan: "#0891b2",
-  white: "#1c1917",
-  brightBlack: "#78716c",
-  brightRed: "#dc2626",
-  brightGreen: "#15803d",
-  brightYellow: "#d97706",
-  brightBlue: "#2563eb",
-  brightMagenta: "#c026d3",
-  brightCyan: "#0891b2",
-  brightWhite: "#57534e",
-};
+import { useTerminalSettingsStore } from "../stores/terminalSettingsStore";
+import { useShallow } from "zustand/react/shallow";
+import "@xterm/xterm/css/xterm.css";
 
 interface Props {
   tabId: string;
@@ -66,168 +15,125 @@ interface Props {
   active: boolean;
 }
 
-export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
+function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
   const channelIdRef = useRef(channelId);
+  channelIdRef.current = channelId;
+
+  // 用 useShallow 包装，避免 selector 返回新对象导致 React 18 useSyncExternalStore 误判 store 变化。
+  const settings = useTerminalSettingsStore(
+    useShallow((s) => ({
+      fontSize: s.fontSize,
+      fontFamily: s.fontFamily,
+      cursorStyle: s.cursorStyle,
+      cursorBlink: s.cursorBlink,
+      colorSchemeId: s.colorSchemeId,
+      scrollback: s.scrollback,
+      copyOnSelect: s.copyOnSelect,
+      lineHeight: s.lineHeight,
+      letterSpacing: s.letterSpacing,
+    })),
+  );
   const resolved = useThemeStore((s) => s.resolved);
+
   const hostKeyModal = useUIStore((s) => s.hostKeyModal);
   const keyboardAuthModal = useUIStore((s) => s.keyboardAuthModal);
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
+  const showTerminalContextMenu = useUIStore((s) => s.showTerminalContextMenu);
   const removeTab = useTerminalStore((s) => s.removeTab);
   const tab = useTerminalStore((s) => s.tabs.get(tabId));
   const tabStatus = tab?.status ?? "connecting";
 
-  channelIdRef.current = channelId;
-
-  useEffect(() => {
-    if (termRef.current) return;
-
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
-      theme: resolved === "light" ? lightTerminalTheme : darkTerminalTheme,
-      allowProposedApi: true,
-      scrollback: 10000,
-    });
-
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-
-    try {
-      term.loadAddon(new WebglAddon());
-    } catch {
-      console.warn("WebGL not available, falling back to canvas renderer");
-    }
-
-    if (containerRef.current) {
-      term.open(containerRef.current);
-      requestAnimationFrame(() => {
-        fitAddon.fit();
-      });
-    }
-
-    terminalManager.register(tabId, term);
-
-    if (channelId) {
-      terminalManager.setChannelId(tabId, channelId);
-    }
-
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
-
-    let lastData = "";
-    let lastTime = 0;
-    const DEDUP_WINDOW_MS = 25;
-
-    term.onData((data) => {
+  // 输入回调：终端 → SSH。channelId 通过 ref 取最新值。
+  const onData = useCallback(
+    (data: string) => {
       const chId = channelIdRef.current;
       if (!chId) return;
-
-      const now = Date.now();
-      if (data === lastData && now - lastTime < DEDUP_WINDOW_MS) {
-        return;
-      }
-      lastData = data;
-      lastTime = now;
-
-      const encoder = new TextEncoder();
-      const bytes = Array.from(encoder.encode(data));
+      const bytes = Array.from(new TextEncoder().encode(data));
       invoke("ssh_send_data", {
         sessionId,
         channelId: chId,
         data: bytes,
       }).catch(console.error);
-    });
+    },
+    [sessionId],
+  );
 
-    const observer = new ResizeObserver(() => {
-      if (!containerRef.current || !fitAddonRef.current) return;
-      if (containerRef.current.offsetParent === null) return;
-      try {
-        fitAddonRef.current.fit();
-      } catch {}
+  // PTY 尺寸同步回调。
+  const onResize = useCallback(
+    (cols: number, rows: number) => {
       const chId = channelIdRef.current;
-      if (termRef.current && chId) {
-        invoke("ssh_resize_pty", {
-          sessionId,
-          channelId: chId,
-          cols: termRef.current.cols,
-          rows: termRef.current.rows,
-        }).catch(console.error);
-      }
-    });
+      if (!chId) return;
+      invoke("ssh_resize_pty", {
+        sessionId,
+        channelId: chId,
+        cols,
+        rows,
+      }).catch(console.error);
+    },
+    [sessionId],
+  );
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
+  // 创建会话（仅 tabId 变化时）。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // 清理容器内可能残留的 xterm DOM（StrictMode 双调用或前次 dispose 异常）。
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
     }
 
-    return () => {
-      observer.disconnect();
-      terminalManager.unregister(tabId);
-      term.dispose();
-      termRef.current = null;
-      fitAddonRef.current = null;
-    };
+    try {
+      terminalManager.createSession(tabId, {
+        container,
+        settings,
+        resolved,
+        channelId: channelIdRef.current || undefined,
+        onData,
+        callbacks: { onResize },
+      });
+    } catch (err) {
+      console.error("[TerminalView] createSession failed:", err);
+    }
+    // settings/resolved 的后续变化由 store 的 applySettingsToAll 统一下发，不在此重建会话。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabId]);
 
+  // channelId 变化时同步到 manager（处理 useSshEvents 后绑定 channel 的场景）。
   useEffect(() => {
-    if (termRef.current) {
-      termRef.current.options.theme = resolved === "light" ? lightTerminalTheme : darkTerminalTheme;
-    }
-  }, [resolved]);
-
-  useEffect(() => {
-    if (channelId && termRef.current) {
+    if (channelId) {
       terminalManager.setChannelId(tabId, channelId);
     }
   }, [tabId, channelId]);
 
+  // active 切换为 true 时重新 fit 并同步 PTY（替代原 setTimeout 黑魔法）。
   useEffect(() => {
     if (!active) return;
-
-    const timers = [
-      setTimeout(() => {
-        if (!fitAddonRef.current || !containerRef.current) return;
-        if (containerRef.current.offsetParent === null) return;
-        try {
-          fitAddonRef.current.fit();
-        } catch {}
-        if (termRef.current && channelIdRef.current) {
-          invoke("ssh_resize_pty", {
-            sessionId,
-            channelId: channelIdRef.current,
-            cols: termRef.current.cols,
-            rows: termRef.current.rows,
-          }).catch(console.error);
-        }
-      }, 30),
-      setTimeout(() => {
-        if (!fitAddonRef.current || !containerRef.current) return;
-        if (containerRef.current.offsetParent === null) return;
-        try {
-          fitAddonRef.current.fit();
-        } catch {}
-        if (termRef.current && channelIdRef.current) {
-          invoke("ssh_resize_pty", {
-            sessionId,
-            channelId: channelIdRef.current,
-            cols: termRef.current.cols,
-            rows: termRef.current.rows,
-          }).catch(console.error);
-        }
-      }, 150),
-    ];
-
-    return () => timers.forEach(clearTimeout);
-  }, [active, sessionId]);
+    const session = terminalManager.getSession(tabId);
+    if (!session) return;
+    session.refitAndSync();
+    session.focus();
+  }, [active, tabId]);
 
   const isHostKeyTarget = hostKeyModal?.sessionId === sessionId;
   const isKeyboardAuthTarget = keyboardAuthModal?.sessionId === sessionId;
 
-  const showStatusOverlay = tabStatus === "connecting" || tabStatus === "disconnected" || tabStatus === "error";
+  const showStatusOverlay =
+    tabStatus === "connecting" ||
+    tabStatus === "disconnected" ||
+    tabStatus === "error";
+
+  // 终端容器右键：拦截默认菜单，弹出桌面级自定义菜单。
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showTerminalContextMenu(e.clientX, e.clientY, tabId);
+    },
+    [showTerminalContextMenu, tabId],
+  );
 
   return (
     <div
@@ -237,7 +143,11 @@ export function TerminalView({ tabId, sessionId, channelId, active }: Props) {
         display: active ? "flex" : "none",
       }}
     >
-      <div className="terminal-container" ref={containerRef} />
+      <div
+        className="terminal-container"
+        ref={containerRef}
+        onContextMenu={handleContextMenu}
+      />
 
       {showStatusOverlay && !isHostKeyTarget && !isKeyboardAuthTarget && (
         <div className="terminal-status-overlay">
@@ -452,3 +362,5 @@ function KeyboardAuthInline({
     </div>
   );
 }
+
+export const TerminalView = memo(TerminalViewImpl);
