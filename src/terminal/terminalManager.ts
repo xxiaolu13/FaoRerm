@@ -354,6 +354,8 @@ export class TerminalSession {
     if (this.disposed) return;
     const chId = this.channelId;
     if (!chId) return;
+    // 先聚焦终端，确保剪贴板权限上下文有效（右键菜单关闭后焦点可能丢失）。
+    this.focus();
     try {
       const text = await navigator.clipboard.readText();
       if (text) this.onData(text);

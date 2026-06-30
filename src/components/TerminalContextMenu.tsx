@@ -63,10 +63,14 @@ function TerminalContextMenuImpl() {
   const run = useCallback(
     (fn: () => void) => {
       hide();
-      // 关闭菜单后再执行，避免与焦点抢占。
-      requestAnimationFrame(() => fn());
+      // 关闭菜单后再执行，避免与焦点抢占；执行后重新聚焦终端，确保可立即键入。
+      requestAnimationFrame(() => {
+        fn();
+        const s = menu ? terminalManager.getSession(menu.tabId) : undefined;
+        s?.focus();
+      });
     },
-    [hide],
+    [hide, menu],
   );
 
   if (!menu) return null;
