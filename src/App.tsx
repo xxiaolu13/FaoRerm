@@ -213,7 +213,7 @@ function RightDrawer() {
                       {msg.role === "assistant" && msg.status === "streaming" && (
                         <span className="ai-message-status">
                           <span className="ai-pulse" />
-                          Working
+                          {msg.toolCalls.some(tc => tc.status === "running") ? "Executing" : "Thinking"}
                         </span>
                       )}
                       {msg.role === "assistant" && msg.status === "error" && (

@@ -50,6 +50,7 @@ interface AIStore {
   confirmRequest: ConfirmRequest | null;
   confirmQueue: ConfirmQueueItem[];
   _listeners: Record<string, UnlistenFn>;
+  _lastAskChannelId: string | null;
   processConfirmQueue: () => void;
 
   getChannelConv: (channelId: string) => ChannelConversation;
@@ -59,7 +60,7 @@ interface AIStore {
   setDefaultProvider: (name: string) => Promise<void>;
   ask: (sessionId: string, channelId: string, question: string) => Promise<void>;
   cancelAsk: (channelId: string) => Promise<void>;
-  confirmDecision: (requestId: string, approved: boolean) => Promise<void>;
+  confirmDecision: (requestId: string, approved: boolean) => void;
   dismissConfirm: () => void;
   clearMessages: (channelId: string) => void;
   initChannelListener: (channelId: string) => Promise<void>;
@@ -83,6 +84,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
   confirmRequest: null,
   confirmQueue: [],
   _listeners: {},
+  _lastAskChannelId: null,
 
   processConfirmQueue: () => {
     set((s) => {
@@ -148,6 +150,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
   ask: async (sessionId, channelId, question) => {
     const conv = get().conversations[channelId] || emptyConv();
     if (conv.loading) return;
+    set({ _lastAskChannelId: channelId });
 
     const userMsg: CopilotMessage = {
       id: `msg-${++msgCounter}`,
@@ -226,15 +229,49 @@ export const useAIStore = create<AIStore>((set, get) => ({
     get().removeChannelListener(channelId);
   },
 
-  confirmDecision: async (requestId, approved) => {
-    try {
-      await invoke("copilot_confirm_decision", { requestId, approved });
-    } catch (err) {
-      console.error("Failed to send confirm decision:", err);
-    } finally {
-      set({ confirmRequest: null });
-      get().processConfirmQueue();
+  confirmDecision: (requestId, approved) => {
+    const req = get().confirmRequest;
+    // 先立即切换 UI（不等后端返回），避免点 Allow 后确认框卡住
+    set({ confirmRequest: null });
+    get().processConfirmQueue();
+
+    // 点 Allow 后命令已发送到终端，立即把对应的 running tool_call 标记为 done，
+    // 不等 ToolEnd 事件（cersei 可能因 wait_for_output 延迟很久才 emit ToolEnd）
+    if (approved && req) {
+      const channelId = get()._lastAskChannelId;
+      if (channelId) {
+        set((s) => {
+          const c = s.conversations[channelId];
+          if (!c) return s;
+          const msgs = [...c.messages];
+          const last = msgs[msgs.length - 1];
+          if (!last || last.role !== "assistant") return s;
+          const toolCalls = [...last.toolCalls];
+          let changed = false;
+          for (let i = 0; i < toolCalls.length; i++) {
+            const tc = toolCalls[i];
+            if (tc.status === "running" && tc.name === req.tool) {
+              toolCalls[i] = { ...tc, status: "done" as const };
+              changed = true;
+              break; // 只标记第一个匹配的（cersei 串行/并发都适用）
+            }
+          }
+          if (!changed) return s;
+          msgs[msgs.length - 1] = { ...last, toolCalls };
+          return {
+            conversations: {
+              ...s.conversations,
+              [channelId]: { ...c, messages: msgs },
+            },
+          };
+        });
+      }
     }
+
+    // fire-and-forget 发送决策到后端
+    invoke("copilot_confirm_decision", { requestId, approved }).catch((err) => {
+      console.error("Failed to send confirm decision:", err);
+    });
   },
 
   dismissConfirm: () => {
