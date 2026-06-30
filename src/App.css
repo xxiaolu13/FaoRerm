@@ -873,6 +873,13 @@ body {
   color: var(--text-primary);
 }
 
+.ai-confirm-queue-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .ai-confirm-desc {
   font-size: 11px;
   color: var(--text-muted);

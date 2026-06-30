@@ -122,6 +122,7 @@ function RightDrawer() {
   const convMessages = useAIStore((s) => s.conversations[channelId]?.messages);
   const convLoading = useAIStore((s) => s.conversations[channelId]?.loading ?? false);
   const confirmRequest = useAIStore((s) => s.confirmRequest);
+  const confirmQueueLen = useAIStore((s) => s.confirmQueue.length);
   const ask = useAIStore((s) => s.ask);
   const cancelAsk = useAIStore((s) => s.cancelAsk);
   const confirmDecision = useAIStore((s) => s.confirmDecision);
@@ -168,6 +169,9 @@ function RightDrawer() {
                   <div className="ai-confirm-header">
                     <span className="ai-confirm-badge">Permission Required</span>
                     <span className="ai-confirm-tool">{confirmRequest.tool}</span>
+                    {confirmQueueLen > 0 && (
+                      <span className="ai-confirm-queue-hint">+{confirmQueueLen} pending</span>
+                    )}
                   </div>
                   {confirmRequest.description && (
                     <div className="ai-confirm-desc">{confirmRequest.description}</div>

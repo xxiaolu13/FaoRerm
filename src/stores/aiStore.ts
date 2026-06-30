@@ -35,12 +35,22 @@ interface ConfirmRequest {
   permissionLevel: string;
 }
 
+interface ConfirmQueueItem {
+  requestId: string;
+  tool: string;
+  input: unknown;
+  description: string;
+  permissionLevel: string;
+}
+
 interface AIStore {
   providers: Record<string, ProviderConfig>;
   defaultProvider: string;
   conversations: Record<string, ChannelConversation>;
   confirmRequest: ConfirmRequest | null;
+  confirmQueue: ConfirmQueueItem[];
   _listeners: Record<string, UnlistenFn>;
+  processConfirmQueue: () => void;
 
   getChannelConv: (channelId: string) => ChannelConversation;
   loadProviders: () => Promise<void>;
@@ -71,7 +81,26 @@ export const useAIStore = create<AIStore>((set, get) => ({
   defaultProvider: "",
   conversations: {},
   confirmRequest: null,
+  confirmQueue: [],
   _listeners: {},
+
+  processConfirmQueue: () => {
+    set((s) => {
+      if (s.confirmRequest !== null) return s;
+      if (s.confirmQueue.length === 0) return s;
+      const [next, ...rest] = s.confirmQueue;
+      return {
+        confirmRequest: {
+          requestId: next.requestId,
+          tool: next.tool,
+          input: next.input,
+          description: next.description,
+          permissionLevel: next.permissionLevel,
+        },
+        confirmQueue: rest,
+      };
+    });
+  },
 
   getChannelConv: (channelId) => {
     return get().conversations[channelId] || emptyConv();
@@ -190,6 +219,8 @@ export const useAIStore = create<AIStore>((set, get) => ({
           ...s.conversations,
           [channelId]: { ...c, messages: msgs, loading: false },
         },
+        confirmRequest: null,
+        confirmQueue: [],
       };
     });
     get().removeChannelListener(channelId);
@@ -202,6 +233,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       console.error("Failed to send confirm decision:", err);
     } finally {
       set({ confirmRequest: null });
+      get().processConfirmQueue();
     }
   },
 
@@ -292,6 +324,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
       if (payload.type === "complete" || payload.type === "error") {
         get().removeChannelListener(channelId);
+        set({ confirmRequest: null, confirmQueue: [] });
       }
     });
 
@@ -314,15 +347,15 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   initConfirmListener: async () => {
     const unlisten = await listen<CopilotConfirmEvent>("copilot:confirm", (event) => {
-      set({
-        confirmRequest: {
-          requestId: event.payload.request_id,
-          tool: event.payload.tool,
-          input: event.payload.input,
-          description: (event.payload as unknown as { description?: string }).description || "",
-          permissionLevel: (event.payload as unknown as { permission_level?: string }).permission_level || "",
-        },
-      });
+      const item: ConfirmQueueItem = {
+        requestId: event.payload.request_id,
+        tool: event.payload.tool,
+        input: event.payload.input,
+        description: (event.payload as unknown as { description?: string }).description || "",
+        permissionLevel: (event.payload as unknown as { permission_level?: string }).permission_level || "",
+      };
+      set((s) => ({ confirmQueue: [...s.confirmQueue, item] }));
+      get().processConfirmQueue();
     });
     return unlisten;
   },
