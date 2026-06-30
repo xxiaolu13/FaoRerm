@@ -27,6 +27,9 @@ interface UIStore {
 
   rightDrawerOpen: boolean;
 
+  /** 右侧抽屉宽度（px），用户可拖拽调整。 */
+  rightDrawerWidth: number;
+
   lockScreenActive: boolean;
 
   activeSection: "servers" | "management";
@@ -69,6 +72,8 @@ interface UIStore {
   toggleSidebar: () => void;
   toggleRightDrawer: () => void;
   setRightDrawerOpen: (open: boolean) => void;
+  /** 设置右侧抽屉宽度（px）。 */
+  setRightDrawerWidth: (width: number) => void;
   activateLockScreen: () => void;
   deactivateLockScreen: () => void;
   setActiveSection: (section: "servers" | "management") => void;
@@ -102,6 +107,7 @@ export const useUIStore = create<UIStore>((set) => ({
   masterPasswordModal: true,
   sidebarCollapsed: false,
   rightDrawerOpen: false,
+  rightDrawerWidth: 300,
   lockScreenActive: false,
   activeSection: "servers",
   managementTab: "commands",
@@ -133,6 +139,8 @@ export const useUIStore = create<UIStore>((set) => ({
   toggleRightDrawer: () =>
     set((state) => ({ rightDrawerOpen: !state.rightDrawerOpen })),
   setRightDrawerOpen: (open) => set({ rightDrawerOpen: open }),
+  setRightDrawerWidth: (width) =>
+    set({ rightDrawerWidth: Math.max(220, Math.min(640, Math.round(width))) }),
   activateLockScreen: () => set({ lockScreenActive: true }),
   deactivateLockScreen: () => set({ lockScreenActive: false }),
   setActiveSection: (section) =>

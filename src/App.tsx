@@ -116,6 +116,8 @@ function RightDrawerToggle() {
 
 function RightDrawer() {
   const rightDrawerOpen = useUIStore((s) => s.rightDrawerOpen);
+  const rightDrawerWidth = useUIStore((s) => s.rightDrawerWidth);
+  const setRightDrawerWidth = useUIStore((s) => s.setRightDrawerWidth);
   const [activeTab, setActiveTab] = useState<"commands" | "ai">("commands");
   const activeSession = useTerminalStore((s) => s.activeSession);
   const channelId = activeSession?.channelId || "";
@@ -141,9 +143,39 @@ function RightDrawer() {
     cancelAsk(channelId);
   };
 
+  const onResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = rightDrawerWidth;
+    const onMove = (ev: MouseEvent) => {
+      // 向左拖 → 宽度增大
+      setRightDrawerWidth(startWidth + (startX - ev.clientX));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
     <div className={`right-drawer-wrapper ${rightDrawerOpen ? "right-drawer-wrapper--open" : ""}`}>
-      <div className="right-drawer">
+      {rightDrawerOpen && (
+        <div
+          className="right-drawer-resize-handle"
+          onMouseDown={onResizeStart}
+          title="Drag to resize"
+        />
+      )}
+      <div
+        className="right-drawer"
+        style={rightDrawerOpen ? { width: rightDrawerWidth, minWidth: rightDrawerWidth } : undefined}
+      >
         <div className="right-drawer-header">
           <div className="right-drawer-tabs">
             <button

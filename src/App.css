@@ -758,6 +758,27 @@ body {
   min-width: var(--right-drawer-width);
 }
 
+/* 右侧抽屉左侧拖拽分隔条：复用 panel-resize-handle 的视觉语言。 */
+.right-drawer-resize-handle {
+  width: 1px;
+  background: var(--border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s, width 0.15s;
+}
+
+.right-drawer-resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.right-drawer-resize-handle:hover {
+  background: var(--accent);
+  width: 2px;
+}
+
 .right-drawer-header {
   display: flex;
   align-items: center;
