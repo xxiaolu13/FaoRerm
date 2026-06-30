@@ -753,6 +753,11 @@ body {
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 拖拽中禁用 transition，保证跟手 */
+body.is-resizing .right-drawer {
+  transition: none;
+}
+
 .right-drawer-wrapper--open .right-drawer {
   width: var(--right-drawer-width);
   min-width: var(--right-drawer-width);

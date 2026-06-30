@@ -147,6 +147,7 @@ function RightDrawer() {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = rightDrawerWidth;
+    document.body.classList.add("is-resizing");
     const onMove = (ev: MouseEvent) => {
       // 向左拖 → 宽度增大
       setRightDrawerWidth(startWidth + (startX - ev.clientX));
@@ -154,6 +155,7 @@ function RightDrawer() {
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("is-resizing");
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
