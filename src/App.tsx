@@ -198,11 +198,12 @@ function RightDrawer() {
               <div className="ai-messages">
                 {(convMessages || []).length === 0 && (
                   <div className="ai-empty">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 2a8 8 0 0 1 8 8c0 3.4-2.1 6.3-5 7.5V20a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2.5C6.1 16.3 4 13.4 4 10a8 8 0 0 1 8-8z" />
                       <path d="M9 22h6" />
                     </svg>
-                    <span>Ask AI about your terminal session</span>
+                    <span className="ai-empty-title">No conversation yet</span>
+                    <span className="ai-empty-hint">Ask about your terminal session, request commands, or debug output.</span>
                   </div>
                 )}
                 {(convMessages || []).map((msg) => (
@@ -231,11 +232,14 @@ function RightDrawer() {
                           <div key={tc.id} className={`ai-tool-call ai-tool-call--${tc.status}`}>
                             <div className="ai-tool-call-header">
                               <span className="ai-tool-call-name">{tc.name}</span>
-                              <span className="ai-tool-call-status">
-                                {tc.status === "running" && "⏳"}
-                                {tc.status === "done" && "✓"}
-                                {tc.status === "error" && "✗"}
-                                {tc.durationMs != null && ` ${tc.durationMs}ms`}
+                              <span className={`ai-tool-call-status ai-tool-call-status--${tc.status}`}>
+                                <span className="ai-tool-call-dot" />
+                                <span className="ai-tool-call-status-label">
+                                  {tc.status === "running" && "running"}
+                                  {tc.status === "done" && "done"}
+                                  {tc.status === "error" && "error"}
+                                </span>
+                                {tc.durationMs != null && <span className="ai-tool-call-duration">{tc.durationMs}ms</span>}
                               </span>
                             </div>
                             <code className="ai-tool-call-input">{formatToolInput(tc.name, tc.input)}</code>
