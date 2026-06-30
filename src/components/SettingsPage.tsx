@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useThemeStore } from "../stores/themeStore";
 import { useTerminalSettingsStore } from "../stores/terminalSettingsStore";
 import {
-  BUILTIN_COLOR_SCHEMES,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   type CursorStyle,
@@ -279,14 +278,12 @@ function TerminalAppearanceSection() {
   const fontFamily = useTerminalSettingsStore((s) => s.fontFamily);
   const cursorStyle = useTerminalSettingsStore((s) => s.cursorStyle);
   const cursorBlink = useTerminalSettingsStore((s) => s.cursorBlink);
-  const colorSchemeId = useTerminalSettingsStore((s) => s.colorSchemeId);
   const lineHeight = useTerminalSettingsStore((s) => s.lineHeight);
   const copyOnSelect = useTerminalSettingsStore((s) => s.copyOnSelect);
   const setFontSize = useTerminalSettingsStore((s) => s.setFontSize);
   const setFontFamily = useTerminalSettingsStore((s) => s.setFontFamily);
   const setCursorStyle = useTerminalSettingsStore((s) => s.setCursorStyle);
   const setCursorBlink = useTerminalSettingsStore((s) => s.setCursorBlink);
-  const setColorScheme = useTerminalSettingsStore((s) => s.setColorScheme);
   const setLineHeight = useTerminalSettingsStore((s) => s.setLineHeight);
   const setCopyOnSelect = useTerminalSettingsStore((s) => s.setCopyOnSelect);
   const reset = useTerminalSettingsStore((s) => s.reset);
@@ -383,35 +380,8 @@ function TerminalAppearanceSection() {
 
       <div className="settings-card">
         <div className="settings-card-header">
-          <span className="settings-card-title">Color Scheme</span>
-          <span className="settings-card-desc">Auto follows the app theme</span>
-        </div>
-        <div className="settings-scheme-grid">
-          <button
-            className={`settings-scheme-btn ${colorSchemeId === "auto" ? "settings-scheme-btn--active" : ""}`}
-            onClick={() => setColorScheme("auto")}
-            title="Follow app theme"
-          >
-            <span className="settings-scheme-swatch settings-scheme-swatch--auto" />
-            <span className="settings-scheme-label">Auto</span>
-          </button>
-          {BUILTIN_COLOR_SCHEMES.map((scheme) => (
-            <button
-              key={scheme.id}
-              className={`settings-scheme-btn ${colorSchemeId === scheme.id ? "settings-scheme-btn--active" : ""}`}
-              onClick={() => setColorScheme(scheme.id)}
-              title={scheme.name}
-            >
-              <span
-                className="settings-scheme-swatch"
-                style={{
-                  background: `linear-gradient(135deg, ${scheme.background} 0 50%, ${scheme.foreground} 50% 100%)`,
-                  boxShadow: `inset 0 0 0 1px ${scheme.blue}`,
-                }}
-              />
-              <span className="settings-scheme-label">{scheme.name}</span>
-            </button>
-          ))}
+          <span className="settings-card-title">Reset</span>
+          <span className="settings-card-desc">Restore terminal defaults</span>
         </div>
         <div className="settings-form-actions">
           <button

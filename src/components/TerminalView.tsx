@@ -27,7 +27,6 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
       fontFamily: s.fontFamily,
       cursorStyle: s.cursorStyle,
       cursorBlink: s.cursorBlink,
-      colorSchemeId: s.colorSchemeId,
       scrollback: s.scrollback,
       copyOnSelect: s.copyOnSelect,
       lineHeight: s.lineHeight,
@@ -150,7 +149,7 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
       />
 
       {showStatusOverlay && !isHostKeyTarget && !isKeyboardAuthTarget && (
-        <div className="terminal-status-overlay">
+        <div className={`terminal-status-overlay${tabStatus === "disconnected" ? " terminal-status-overlay--disconnected" : ""}`}>
           <div className="terminal-status-card">
             {tabStatus === "connecting" && (
               <>

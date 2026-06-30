@@ -510,6 +510,13 @@ body {
   backdrop-filter: blur(4px);
 }
 
+/* 断开连接时不虚化终端，保留历史内容可读 */
+.terminal-status-overlay--disconnected {
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
 .terminal-status-card {
   display: flex;
   flex-direction: column;

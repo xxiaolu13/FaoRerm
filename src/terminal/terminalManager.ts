@@ -411,8 +411,8 @@ export class TerminalSession {
     }
 
     // 配色：从 CSS 变量读取（broadcast 已先写入 :root）。
-    // themeKey 变化（schemeId 或 resolved 变）时触发重读，避免无谓重写。
-    const themeKey = `${settings.colorSchemeId}:${resolved}`;
+    // themeKey 变化（resolved 变）时触发重读，避免无谓重写。
+    const themeKey = resolved;
     if (this._lastThemeKey !== themeKey) {
       const theme = readXtermThemeFromCSS();
       if (!themeEqual(this.configuredTheme, theme)) {

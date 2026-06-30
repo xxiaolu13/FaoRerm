@@ -47,6 +47,8 @@ pub fn run() {
             del_quick_command,
             get_appearance_config,
             update_appearance_config,
+            get_terminal_config,
+            update_terminal_config,
             // Screen / Master Password
             unlock,
             clear_master_password,

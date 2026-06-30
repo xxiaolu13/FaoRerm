@@ -44,9 +44,57 @@ pub struct FaoConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TerminalConfig {
+    #[serde(default = "default_font_size")]
+    pub font_size: u32,
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+    #[serde(default = "default_cursor_style")]
+    pub cursor_style: String,
+    #[serde(default = "default_cursor_blink")]
+    pub cursor_blink: bool,
+    #[serde(default = "default_scrollback")]
+    pub scrollback: u32,
+    #[serde(default = "default_copy_on_select")]
+    pub copy_on_select: bool,
+    #[serde(default = "default_line_height")]
+    pub line_height: f64,
+    #[serde(default = "default_letter_spacing")]
+    pub letter_spacing: f64,
+}
+
+fn default_font_size() -> u32 { 14 }
+fn default_font_family() -> String {
+    "\"Cascadia Code\", \"JetBrains Mono\", \"Fira Code\", \"SF Mono\", Consolas, monospace".to_string()
+}
+fn default_cursor_style() -> String { "bar".to_string() }
+fn default_cursor_blink() -> bool { true }
+fn default_scrollback() -> u32 { 10000 }
+fn default_copy_on_select() -> bool { false }
+fn default_line_height() -> f64 { 1.1 }
+fn default_letter_spacing() -> f64 { 0.0 }
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            font_size: default_font_size(),
+            font_family: default_font_family(),
+            cursor_style: default_cursor_style(),
+            cursor_blink: default_cursor_blink(),
+            scrollback: default_scrollback(),
+            copy_on_select: default_copy_on_select(),
+            line_height: default_line_height(),
+            letter_spacing: default_letter_spacing(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppearanceConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default)]
+    pub terminal: TerminalConfig,
 }
 
 fn default_theme() -> String {
@@ -57,6 +105,7 @@ impl Default for AppearanceConfig {
     fn default() -> Self {
         Self {
             theme: default_theme(),
+            terminal: TerminalConfig::default(),
         }
     }
 }
@@ -290,6 +339,11 @@ impl ConfigManager {
 
     pub fn update_appearance(&self, theme: &str) -> Result<(), ConfigError> {
         self.data.write().appearance.theme = theme.to_string();
+        self.save()
+    }
+
+    pub fn update_terminal_config(&self, cfg: TerminalConfig) -> Result<(), ConfigError> {
+        self.data.write().appearance.terminal = cfg;
         self.save()
     }
 

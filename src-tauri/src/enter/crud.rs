@@ -2,7 +2,7 @@
 use crate::client::key::*;
 
 use crate::service::FaoConfig;
-use crate::service::{ ServerConfig, AIConfig, ProviderConfig, BlacklistConfig, AppearanceConfig, AuthMethod};
+use crate::service::{ ServerConfig, AIConfig, ProviderConfig, BlacklistConfig, AppearanceConfig, AuthMethod, TerminalConfig};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use bytes::Bytes;
 use russh::keys::PublicKeyBase64;
@@ -163,6 +163,28 @@ pub async fn update_appearance_config(theme: String) -> Result<(), String> {
         .clone();
     info.update_appearance(&theme)
     .map_err(|e| format!("update appearance error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_terminal_config() -> Result<TerminalConfig, String> {
+    let info = FAO_SERVICES
+        .lock()
+        .await
+        .config
+        .get_snapshot();
+    Ok(info.appearance.terminal)
+}
+
+#[tauri::command]
+pub async fn update_terminal_config(config: TerminalConfig) -> Result<(), String> {
+    let info = FAO_SERVICES
+        .lock()
+        .await
+        .config
+        .clone();
+    info.update_terminal_config(config)
+        .map_err(|e| format!("update terminal config error: {}", e))?;
     Ok(())
 }
 
