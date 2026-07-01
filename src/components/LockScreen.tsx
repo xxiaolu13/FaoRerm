@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useUIStore } from "../stores/uiStore";
 import { useServerStore } from "../stores/serverStore";
+import { useT } from "../stores/i18nStore";
 
 export function LockScreen() {
   const lockScreenActive = useUIStore((s) => s.lockScreenActive);
   const deactivateLockScreen = useUIStore((s) => s.deactivateLockScreen);
   const unlockMasterPassword = useServerStore((s) => s.unlockMasterPassword);
   const loadServers = useServerStore((s) => s.loadServers);
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +28,7 @@ export function LockScreen() {
 
   const handleUnlock = useCallback(async () => {
     if (!password.trim()) {
-      setError("Please enter a password");
+      setError(t("lockScreen.enterPassword"));
       return;
     }
     setLoading(true);
@@ -40,7 +42,7 @@ export function LockScreen() {
     } finally {
       setLoading(false);
     }
-  }, [password, unlockMasterPassword, loadServers, deactivateLockScreen]);
+  }, [password, unlockMasterPassword, loadServers, deactivateLockScreen, t]);
 
   useEffect(() => {
     if (!lockScreenActive) return;
@@ -107,10 +109,8 @@ export function LockScreen() {
             <circle cx="12" cy="16" r="1.5" fill="currentColor" />
           </svg>
         </div>
-        <h2 className="lock-screen-title">FaoRerm Locked</h2>
-        <p className="lock-screen-desc">
-          Enter your master password to unlock the application.
-        </p>
+        <h2 className="lock-screen-title">{t("lockScreen.title")}</h2>
+        <p className="lock-screen-desc">{t("lockScreen.desc")}</p>
         <div className="lock-screen-form">
           <input
             ref={inputRef}
@@ -121,7 +121,7 @@ export function LockScreen() {
               setPassword(e.target.value);
               setError(null);
             }}
-            placeholder="Master password"
+            placeholder={t("lockScreen.placeholder")}
             autoFocus
           />
           {error && <div className="alert alert--error">{error}</div>}
@@ -130,7 +130,7 @@ export function LockScreen() {
             onClick={handleUnlock}
             disabled={loading || !password}
           >
-            {loading ? "Unlocking..." : "Unlock"}
+            {loading ? t("lockScreen.unlocking") : t("lockScreen.unlock")}
           </button>
         </div>
       </div>

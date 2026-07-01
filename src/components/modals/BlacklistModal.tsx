@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUIStore } from "../../stores/uiStore";
 import { useServerStore } from "../../stores/serverStore";
+import { useT } from "../../stores/i18nStore";
 
 export function BlacklistModal() {
   const show = useUIStore((s) => s.blacklistModal);
@@ -8,6 +9,7 @@ export function BlacklistModal() {
   const blacklist = useServerStore((s) => s.blacklist);
   const loadBlacklist = useServerStore((s) => s.loadBlacklist);
   const addBlacklistItem = useServerStore((s) => s.addBlacklistItem);
+  const t = useT();
 
   const [newItem, setNewItem] = useState("");
 
@@ -31,11 +33,8 @@ export function BlacklistModal() {
     <div className="modal-overlay" onClick={hideBlacklistModal}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Command Blacklist</h2>
-          <p className="modal-desc">
-            Commands containing these patterns will be blocked from execution
-            on remote servers.
-          </p>
+          <h2 className="modal-title">{t("blacklistModal.title")}</h2>
+          <p className="modal-desc">{t("blacklistModal.desc")}</p>
         </div>
 
         <div className="modal-body">
@@ -43,7 +42,7 @@ export function BlacklistModal() {
             <div className="form-group form-group--row">
               <input
                 className="input"
-                placeholder="Add pattern (e.g., rm -rf)"
+                placeholder={t("blacklistModal.patternPlaceholder")}
                 value={newItem}
                 onChange={(e) => setNewItem(e.target.value)}
                 onKeyDown={(e) => {
@@ -51,14 +50,14 @@ export function BlacklistModal() {
                 }}
               />
               <button className="btn btn--primary" onClick={handleAdd}>
-                Add
+                {t("blacklistModal.add")}
               </button>
             </div>
           </div>
 
           <div className="blacklist-items">
             {(!blacklist?.contains || blacklist.contains.length === 0) && (
-              <span className="empty-hint">No blacklist entries</span>
+              <span className="empty-hint">{t("blacklistModal.empty")}</span>
             )}
             {blacklist?.contains.map((item, i) => (
               <div key={i} className="blacklist-item">
@@ -70,7 +69,7 @@ export function BlacklistModal() {
 
         <div className="modal-footer">
           <button className="btn btn--ghost" onClick={hideBlacklistModal}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>

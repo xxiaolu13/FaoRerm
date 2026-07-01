@@ -5,6 +5,7 @@ import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
 import { terminalManager } from "../terminal/terminalManager";
+import { t as _t } from "../stores/i18nStore";
 import type { SshEvent, TabStatus } from "../types";
 
 export function useSshEvents() {
@@ -66,10 +67,10 @@ export function useSshEvents() {
                 }).catch((err) => {
                   console.error("Failed to open shell:", err);
                   cb.updateTabStatus(connectingTab.tabId, "error");
-                  toast("Shell open failed", { description: String(err), variant: "error" });
+                  toast(_t("sshEvents.shellOpenFailed"), { description: String(err), variant: "error" });
                 });
 
-                toast("Connected", { description: "Session established", variant: "success" });
+                toast(_t("sshEvents.connected"), { description: _t("sshEvents.sessionEstablished"), variant: "success" });
               }
             } else if (kind.state === "Disconnected") {
               const store = useTerminalStore.getState();
@@ -77,7 +78,7 @@ export function useSshEvents() {
               for (const tab of sessionTabs) {
                 cb.updateTabStatus(tab.tabId, "disconnected");
               }
-              toast("Disconnected", { description: "Session closed", variant: "warning" });
+              toast(_t("sshEvents.disconnected"), { description: _t("sshEvents.sessionClosed"), variant: "warning" });
             } else if (kind.state === "Connecting") {
               const store = useTerminalStore.getState();
               const sessionTabs = store.getTabsBySessionId(session_id);
@@ -96,7 +97,7 @@ export function useSshEvents() {
             for (const tab of sessionTabs) {
               cb.updateTabStatus(tab.tabId, "error");
             }
-            toast("SSH Error", { description: kind.error, variant: "error" });
+            toast(_t("sshEvents.sshError"), { description: kind.error, variant: "error" });
             break;
           }
 
@@ -106,7 +107,7 @@ export function useSshEvents() {
             for (const tab of sessionTabs) {
               cb.removeTab(tab.tabId);
             }
-            toast("Session dropped", { description: "Backend session cleaned up", variant: "warning" });
+            toast(_t("sshEvents.sessionDropped"), { description: _t("sshEvents.backendCleanedUp"), variant: "warning" });
             break;
           }
 
@@ -141,7 +142,7 @@ export function useSshEvents() {
           case "channel_close": {
             if (channel_id) {
               cb.updateTabStatusByChannelId(channel_id, "disconnected");
-              toast("Shell closed", { description: `Channel ${channel_id.slice(0, 8)}...`, variant: "warning" });
+              toast(_t("sshEvents.shellClosed"), { description: _t("sshEvents.channelN", { id: channel_id.slice(0, 8) }), variant: "warning" });
             }
             break;
           }
@@ -156,7 +157,7 @@ export function useSshEvents() {
           case "channel_failure": {
             if (channel_id) {
               cb.updateTabStatusByChannelId(channel_id, "error");
-              toast("Channel failed", { description: `Channel ${channel_id.slice(0, 8)}...`, variant: "error" });
+              toast(_t("sshEvents.channelFailed"), { description: _t("sshEvents.channelN", { id: channel_id.slice(0, 8) }), variant: "error" });
             }
             break;
           }
@@ -164,7 +165,7 @@ export function useSshEvents() {
           case "exit_status": {
             if (channel_id) {
               cb.updateTabStatusByChannelId(channel_id, "disconnected");
-              toast("Process exited", { description: `Exit code: ${kind.exit_status}`, variant: "default" });
+              toast(_t("sshEvents.processExited"), { description: _t("sshEvents.exitCodeN", { n: kind.exit_status }), variant: "default" });
             }
             break;
           }
@@ -172,7 +173,7 @@ export function useSshEvents() {
           case "exit_signal": {
             if (channel_id) {
               cb.updateTabStatusByChannelId(channel_id, "disconnected");
-              toast("Process killed", { description: `Signal: ${kind.signal_name}`, variant: "error" });
+              toast(_t("sshEvents.processKilled"), { description: _t("sshEvents.signalN", { name: kind.signal_name }), variant: "error" });
             }
             break;
           }

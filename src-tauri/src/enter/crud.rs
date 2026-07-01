@@ -188,6 +188,49 @@ pub async fn update_terminal_config(config: TerminalConfig) -> Result<(), String
     Ok(())
 }
 
+// ========================= Config File =============================
+
+/// 返回配置文件的绝对路径
+#[tauri::command]
+pub async fn get_config_file_path() -> Result<String, String> {
+    let path = {
+        let services = FAO_SERVICES.lock().await;
+        services.config.path.clone()
+    };
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Config path contains invalid UTF-8".to_string())
+}
+
+/// 用系统默认编辑器打开配置文件
+#[tauri::command]
+pub async fn open_config_file(app_handle: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = {
+        let services = FAO_SERVICES.lock().await;
+        services.config.path.clone()
+    };
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| "Config path contains invalid UTF-8".to_string())?;
+    app_handle
+        .opener()
+        .open_path(path_str.to_string(), None::<&str>)
+        .map_err(|e| format!("Failed to open config file: {}", e))
+}
+
+/// 用户外部编辑配置文件后，重新加载到内存
+#[tauri::command]
+pub async fn reload_config() -> Result<(), String> {
+    let config = {
+        let services = FAO_SERVICES.lock().await;
+        services.config.clone()
+    };
+    config
+        .reload()
+        .map_err(|e| format!("reload config error: {}", e))
+}
+
 // ========================= AI Provider CRUD =========================
 
 #[tauri::command]

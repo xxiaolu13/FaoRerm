@@ -5,6 +5,7 @@ import { useUIStore } from "../stores/uiStore";
 import { useTerminalStore } from "../stores/terminalStore";
 import { useThemeStore } from "../stores/themeStore";
 import { useTerminalSettingsStore } from "../stores/terminalSettingsStore";
+import { useT } from "../stores/i18nStore";
 import { useShallow } from "zustand/react/shallow";
 import "@xterm/xterm/css/xterm.css";
 
@@ -19,6 +20,7 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
+  const t = useT();
 
   // 用 useShallow 包装，避免 selector 返回新对象导致 React 18 useSyncExternalStore 误判 store 变化。
   const settings = useTerminalSettingsStore(
@@ -158,8 +160,8 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
                     <circle cx="14" cy="14" r="11" stroke="currentColor" strokeWidth="2" strokeDasharray="50" strokeLinecap="round" />
                   </svg>
                 </div>
-                <span className="terminal-status-text">Establishing connection...</span>
-                <span className="terminal-status-hint">Connecting to {tab?.host ?? sessionId}</span>
+                <span className="terminal-status-text">{t("terminal.connecting")}</span>
+                <span className="terminal-status-hint">{t("terminal.connectingTo", { host: tab?.host ?? sessionId })}</span>
               </>
             )}
             {tabStatus === "disconnected" && (
@@ -168,8 +170,8 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
                   <circle cx="14" cy="14" r="11" stroke="currentColor" strokeWidth="1.5" />
                   <path d="M10 10L18 18M18 10L10 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
-                <span className="terminal-status-text">Session Disconnected</span>
-                <span className="terminal-status-hint">The remote connection has been closed</span>
+                <span className="terminal-status-text">{t("terminal.disconnected")}</span>
+                <span className="terminal-status-hint">{t("terminal.disconnectedHint")}</span>
               </>
             )}
             {tabStatus === "error" && (
@@ -179,8 +181,8 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
                   <path d="M14 11V16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   <circle cx="14" cy="20" r="1" fill="currentColor" />
                 </svg>
-                <span className="terminal-status-text">Connection Error</span>
-                <span className="terminal-status-hint">Failed to establish or maintain the SSH session</span>
+                <span className="terminal-status-text">{t("terminal.error")}</span>
+                <span className="terminal-status-hint">{t("terminal.errorHint")}</span>
               </>
             )}
           </div>
@@ -198,19 +200,17 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
                   <circle cx="12" cy="17" r="1" fill="currentColor" />
                 </svg>
               </div>
-              <h2 className="modal-title">Host Key Verification</h2>
-              <p className="modal-desc">
-                The server's host key is not recognized. Verify the fingerprint before continuing.
-              </p>
+              <h2 className="modal-title">{t("hostKey.title")}</h2>
+              <p className="modal-desc">{t("hostKey.desc")}</p>
             </div>
             <div className="modal-body">
               <div className="key-info">
                 <div className="key-info-row">
-                  <span className="key-info-label">Key Type</span>
+                  <span className="key-info-label">{t("hostKey.keyType")}</span>
                   <code className="key-info-value">{hostKeyModal.keyType}</code>
                 </div>
                 <div className="key-info-row">
-                  <span className="key-info-label">Fingerprint</span>
+                  <span className="key-info-label">{t("hostKey.fingerprint")}</span>
                   <code className="key-info-value key-fingerprint">{hostKeyModal.fingerprint}</code>
                 </div>
               </div>
@@ -219,9 +219,9 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
               <button className="btn btn--danger" onClick={async () => {
                 try {
                   await invoke("ssh_confirm_host_key", { sessionId: hostKeyModal.sessionId, accepted: false });
-                  const t = useTerminalStore.getState().tabs.get(tabId);
-                  if (t?.channelId) {
-                    await invoke("ssh_close_channel", { sessionId: hostKeyModal.sessionId, channelId: t.channelId });
+                  const tItem = useTerminalStore.getState().tabs.get(tabId);
+                  if (tItem?.channelId) {
+                    await invoke("ssh_close_channel", { sessionId: hostKeyModal.sessionId, channelId: tItem.channelId });
                   } else {
                     await invoke("ssh_disconnect", { sessionId: hostKeyModal.sessionId });
                   }
@@ -229,7 +229,7 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
                 removeTab(tabId);
                 hideHostKeyModal();
               }}>
-                Deny
+                {t("hostKey.deny")}
               </button>
               <button className="btn btn--primary" onClick={async () => {
                 try {
@@ -239,7 +239,7 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
                 }
                 hideHostKeyModal();
               }}>
-                Accept &amp; Trust
+                {t("hostKey.accept")}
               </button>
             </div>
           </div>
@@ -251,9 +251,9 @@ function TerminalViewImpl({ tabId, sessionId, channelId, active }: Props) {
           sessionId={keyboardAuthModal.sessionId}
           prompt={keyboardAuthModal.prompt}
           onCancel={() => {
-            const t = useTerminalStore.getState().tabs.get(tabId);
-            if (t?.channelId) {
-              invoke("ssh_close_channel", { sessionId: keyboardAuthModal.sessionId, channelId: t.channelId }).catch(() => {});
+            const tItem = useTerminalStore.getState().tabs.get(tabId);
+            if (tItem?.channelId) {
+              invoke("ssh_close_channel", { sessionId: keyboardAuthModal.sessionId, channelId: tItem.channelId }).catch(() => {});
             } else {
               invoke("ssh_disconnect", { sessionId: keyboardAuthModal.sessionId }).catch(() => {});
             }
@@ -289,6 +289,7 @@ function KeyboardAuthInline({
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const isPassword = /password|passwd|secret/i.test(prompt);
+  const t = useT();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -326,13 +327,13 @@ function KeyboardAuthInline({
               <circle cx="12" cy="8" r="1" fill="currentColor" />
             </svg>
           </div>
-          <h2 className="modal-title">Authentication Required</h2>
+          <h2 className="modal-title">{t("keyboardAuth.title")}</h2>
           <p className="modal-desc modal-desc--prompt">{prompt}</p>
         </div>
         <div className="modal-body">
           <div className="form-group">
             <label className="form-label" htmlFor={`kb-auth-${sessionId}`}>
-              Response
+              {t("keyboardAuth.response")}
             </label>
             <input
               id={`kb-auth-${sessionId}`}
@@ -345,16 +346,16 @@ function KeyboardAuthInline({
                 if (e.key === "Enter" && response) handleSubmit();
               }}
               autoFocus
-              placeholder={isPassword ? "Enter password..." : "Enter response..."}
+              placeholder={isPassword ? t("keyboardAuth.placeholderPassword") : t("keyboardAuth.placeholderResponse")}
             />
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn--ghost" onClick={onCancel}>
-            Cancel
+            {t("keyboardAuth.cancel")}
           </button>
           <button className="btn btn--primary" onClick={handleSubmit} disabled={loading || !response}>
-            {loading ? "Sending..." : "Submit"}
+            {loading ? t("keyboardAuth.sending") : t("keyboardAuth.submit")}
           </button>
         </div>
       </div>

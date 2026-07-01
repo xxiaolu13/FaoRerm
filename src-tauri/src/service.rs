@@ -241,6 +241,18 @@ impl ConfigManager {
         Self::save_to_path(&self.path, &*config_guard)
     }
 
+    /// 从磁盘重新加载配置到内存（用户外部编辑配置文件后调用）
+    pub fn reload(&self) -> Result<(), ConfigError> {
+        let config = if self.path.exists() {
+            let content = fs::read_to_string(&self.path)?;
+            toml::from_str(&content)?
+        } else {
+            FaoConfig::default()
+        };
+        *self.data.write() = config;
+        Ok(())
+    }
+
 
     pub fn get_snapshot(&self) -> FaoConfig {
         self.data.read().clone()

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUIStore } from "../../stores/uiStore";
 import { useServerStore } from "../../stores/serverStore";
+import { useT } from "../../stores/i18nStore";
 
 export function MasterPasswordModal() {
   const show = useUIStore((s) => s.masterPasswordModal);
@@ -9,6 +10,7 @@ export function MasterPasswordModal() {
   const checkMasterPassword = useServerStore((s) => s.checkMasterPassword);
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
   const loadServers = useServerStore((s) => s.loadServers);
+  const t = useT();
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function MasterPasswordModal() {
 
   const handleUnlock = async () => {
     if (!password.trim()) {
-      setError("Please enter a password");
+      setError(t("masterPassword.enterPassword"));
       return;
     }
     setLoading(true);
@@ -47,63 +49,51 @@ export function MasterPasswordModal() {
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-icon modal-icon--lock">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <rect
-                x="5"
-                y="11"
-                width="14"
-                height="10"
-                rx="2"
-                stroke="currentColor"
-                strokeWidth="2"
-              />
-              <path
-                d="M8 11V7C8 4.791 9.791 3 12 3C14.209 3 16 4.791 16 7V11"
-                stroke="currentColor"
-                strokeWidth="2"
-              />
-              <circle cx="12" cy="16" r="1" fill="currentColor" />
-            </svg>
-          </div>
-          <h2 className="modal-title">Master Password</h2>
-          <p className="modal-desc">
-            Set a master password to encrypt and protect your server
-            credentials. This password is required each time you launch the app.
-          </p>
-        </div>
-
-        <div className="modal-body">
-          <div className="form-group">
-            <label className="form-label" htmlFor="master-password">
-              Master Password
-            </label>
-            <input
-              id="master-password"
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleUnlock();
-              }}
-              autoFocus
-              placeholder="Enter a strong master password"
+    <div className="lock-screen">
+      <div className="lock-screen-card">
+        <div className="lock-screen-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+            <rect
+              x="5"
+              y="11"
+              width="14"
+              height="10"
+              rx="2"
+              stroke="currentColor"
+              strokeWidth="1.5"
             />
-          </div>
-          {error && <div className="alert alert--error">{error}</div>}
+            <path
+              d="M8 11V7C8 4.791 9.791 3 12 3C14.209 3 16 4.791 16 7V11"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <circle cx="12" cy="16" r="1.5" fill="currentColor" />
+          </svg>
         </div>
-
-        <div className="modal-footer">
+        <h2 className="lock-screen-title">{t("masterPassword.title")}</h2>
+        <p className="lock-screen-desc">{t("masterPassword.desc")}</p>
+        <div className="lock-screen-form">
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleUnlock();
+            }}
+            placeholder={t("masterPassword.placeholder")}
+            autoFocus
+          />
+          {error && <div className="alert alert--error">{error}</div>}
           <button
             className="btn btn--primary btn--full"
             onClick={handleUnlock}
-            disabled={loading}
+            disabled={loading || !password}
           >
-            {loading ? "Unlocking..." : "Unlock"}
+            {loading ? t("masterPassword.unlocking") : t("masterPassword.unlock")}
           </button>
         </div>
       </div>

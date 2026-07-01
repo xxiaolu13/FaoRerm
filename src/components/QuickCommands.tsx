@@ -2,12 +2,14 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useServerStore } from "../stores/serverStore";
 import { useTerminalStore } from "../stores/terminalStore";
+import { useT } from "../stores/i18nStore";
 
 export function QuickCommands() {
   const quickCommands = useServerStore((s) => s.quickCommands);
   const addQuickCommand = useServerStore((s) => s.addQuickCommand);
   const deleteQuickCommand = useServerStore((s) => s.deleteQuickCommand);
   const activeSession = useTerminalStore((s) => s.activeSession);
+  const t = useT();
 
   const [newDesc, setNewDesc] = useState("");
   const [newCmd, setNewCmd] = useState("");
@@ -41,11 +43,11 @@ export function QuickCommands() {
   return (
     <div className="right-drawer-section">
       <div className="right-drawer-section-header">
-        <span className="right-drawer-section-title">Quick Commands</span>
+        <span className="right-drawer-section-title">{t("quickCommands.title")}</span>
       </div>
 
       {entries.length === 0 && (
-        <span className="empty-hint">No saved commands</span>
+        <span className="empty-hint">{t("quickCommands.noSaved")}</span>
       )}
       {entries.map(([desc, cmd]) => (
         <div
@@ -61,7 +63,7 @@ export function QuickCommands() {
             }
           }}
           aria-disabled={!activeSession}
-          title={activeSession ? `Send: ${cmd.replace(/\\n/g, " ↵ ")}` : "No active terminal"}
+          title={activeSession ? t("quickCommands.sendCmd", { cmd: cmd.replace(/\\n/g, " ↵ ") }) : t("quickCommands.noActiveTerminal")}
         >
           <div className="quick-command-info">
             <span className="quick-command-desc">{desc}</span>
@@ -73,7 +75,7 @@ export function QuickCommands() {
               e.stopPropagation();
               deleteQuickCommand(desc);
             }}
-            title="Delete command"
+            title={t("quickCommands.deleteCmd")}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path
@@ -91,7 +93,7 @@ export function QuickCommands() {
         <div className="quick-command-add-form">
           <input
             className="input input--sm"
-            placeholder="Description"
+            placeholder={t("quickCommands.description")}
             value={newDesc}
             onChange={(e) => setNewDesc(e.target.value)}
             onKeyDown={(e) => {
@@ -101,7 +103,7 @@ export function QuickCommands() {
           />
           <textarea
             className="input input--sm quick-command-textarea"
-            placeholder="Command (use \n for multiple lines)"
+            placeholder={t("quickCommands.cmdPlaceholder")}
             value={newCmd}
             onChange={(e) => setNewCmd(e.target.value)}
             onKeyDown={(e) => {
@@ -115,13 +117,13 @@ export function QuickCommands() {
           />
           <div className="quick-command-add-actions">
             <button className="btn btn--sm btn--primary" onClick={handleAdd}>
-              Save
+              {t("common.save")}
             </button>
             <button
               className="btn btn--sm btn--ghost"
               onClick={() => setShowAdd(false)}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </div>
@@ -130,7 +132,7 @@ export function QuickCommands() {
           className="btn btn--sm btn--ghost btn--full"
           onClick={() => setShowAdd(true)}
         >
-          + Add Command
+          {t("quickCommands.addCommand")}
         </button>
       )}
     </div>

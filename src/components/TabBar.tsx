@@ -4,6 +4,7 @@ import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
 import { terminalManager } from "../terminal/terminalManager";
+import { useT, t as _t } from "../stores/i18nStore";
 
 export function TabBar() {
   const tabs = useTerminalStore((s) => s.tabs);
@@ -17,6 +18,7 @@ export function TabBar() {
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
   const showContextMenu = useUIStore((s) => s.showContextMenu);
   const enterServers = useUIStore((s) => s.enterServers);
+  const t = useT();
 
   const handleClose = (tabId: string) => {
     const tab = tabs.get(tabId);
@@ -32,7 +34,7 @@ export function TabBar() {
     if (keyboardAuthModal?.sessionId === tab.sessionId) hideKeyboardAuthModal();
 
     removeTab(tabId);
-    toast("Tab closed", { variant: "default", duration: 2000 });
+    toast(_t("toast.tabClosed"), { variant: "default", duration: 2000 });
   };
 
   // 仅切换 Tab，绝不触发侧边栏 toggle（穿透 Bug 修复）。
@@ -53,7 +55,7 @@ export function TabBar() {
     return (
       <div className="tab-bar tab-bar--empty">
         <span className="tab-bar-empty-text">
-          Connect to a server from the sidebar to begin
+          {t("terminal.emptyHint")}
         </span>
       </div>
     );
@@ -94,7 +96,7 @@ export function TabBar() {
                 e.stopPropagation();
                 handleClose(tabId);
               }}
-              title="Close tab"
+              title={t("tabBar.close")}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path
@@ -123,6 +125,7 @@ export function TabContextMenu() {
   const keyboardAuthModal = useUIStore((s) => s.keyboardAuthModal);
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
+  const t = useT();
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -145,8 +148,8 @@ export function TabContextMenu() {
   if (!tab) return null;
 
   const sessionTabs = tabOrder.filter((tid) => {
-    const t = tabs.get(tid);
-    return t?.sessionId === sessionId;
+    const tItem = tabs.get(tid);
+    return tItem?.sessionId === sessionId;
   });
 
   const otherTabs = tabOrder.filter((tid) => tid !== tabId);
@@ -184,18 +187,18 @@ export function TabContextMenu() {
         status: "connecting",
       });
 
-      toast("New shell opened", { description: `Shell #${shellCount} on ${tab.host}`, variant: "success" });
+      toast(_t("toast.newShellOpened"), { description: _t("toast.shellNOnHost", { host: tab.host, n: shellCount }), variant: "success" });
     } catch (err) {
-      toast("Failed to open shell", { description: String(err), variant: "error" });
+      toast(_t("toast.failedToOpenShell"), { description: String(err), variant: "error" });
     }
   };
 
   const handleCloseTab = () => {
     hideContextMenu();
-    const t = tabs.get(tabId);
-    if (t?.channelId) {
-      invoke("ssh_close_channel", { sessionId, channelId: t.channelId }).catch(() => {});
-    } else if (t?.status === "connecting") {
+    const tItem = tabs.get(tabId);
+    if (tItem?.channelId) {
+      invoke("ssh_close_channel", { sessionId, channelId: tItem.channelId }).catch(() => {});
+    } else if (tItem?.status === "connecting") {
       invoke("ssh_disconnect", { sessionId }).catch(() => {});
     }
     if (hostKeyModal?.sessionId === sessionId) hideHostKeyModal();
@@ -206,11 +209,11 @@ export function TabContextMenu() {
   const handleCloseOthers = () => {
     hideContextMenu();
     for (const tid of otherTabs) {
-      const t = tabs.get(tid);
-      if (t?.channelId) {
-        invoke("ssh_close_channel", { sessionId: t.sessionId, channelId: t.channelId }).catch(() => {});
-      } else if (t?.status === "connecting") {
-        invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
+      const tItem = tabs.get(tid);
+      if (tItem?.channelId) {
+        invoke("ssh_close_channel", { sessionId: tItem.sessionId, channelId: tItem.channelId }).catch(() => {});
+      } else if (tItem?.status === "connecting") {
+        invoke("ssh_disconnect", { sessionId: tItem.sessionId }).catch(() => {});
       }
       removeTab(tid);
     }
@@ -220,11 +223,11 @@ export function TabContextMenu() {
   const handleCloseToRight = () => {
     hideContextMenu();
     for (const tid of rightTabs) {
-      const t = tabs.get(tid);
-      if (t?.channelId) {
-        invoke("ssh_close_channel", { sessionId: t.sessionId, channelId: t.channelId }).catch(() => {});
-      } else if (t?.status === "connecting") {
-        invoke("ssh_disconnect", { sessionId: t.sessionId }).catch(() => {});
+      const tItem = tabs.get(tid);
+      if (tItem?.channelId) {
+        invoke("ssh_close_channel", { sessionId: tItem.sessionId, channelId: tItem.channelId }).catch(() => {});
+      } else if (tItem?.status === "connecting") {
+        invoke("ssh_disconnect", { sessionId: tItem.sessionId }).catch(() => {});
       }
       removeTab(tid);
     }
@@ -246,28 +249,28 @@ export function TabContextMenu() {
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M7 2V12M2 7H12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </svg>
-        Open New Shell
+        {t("tabBar.openNewShell")}
       </button>
       <div className="context-menu-separator" />
       <button className="context-menu-item" onClick={handleCloseTab}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </svg>
-        Close Tab
+        {t("tabBar.closeTab")}
       </button>
       <button
         className={`context-menu-item ${otherTabs.length === 0 ? "context-menu-item--disabled" : ""}`}
         onClick={otherTabs.length > 0 ? handleCloseOthers : undefined}
         disabled={otherTabs.length === 0}
       >
-        Close Others
+        {t("tabBar.closeOthers")}
       </button>
       <button
         className={`context-menu-item ${rightTabs.length === 0 ? "context-menu-item--disabled" : ""}`}
         onClick={rightTabs.length > 0 ? handleCloseToRight : undefined}
         disabled={rightTabs.length === 0}
       >
-        Close to Right
+        {t("tabBar.closeToRight")}
       </button>
     </div>
   );

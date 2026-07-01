@@ -5,6 +5,7 @@ import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
 import { terminalManager } from "../terminal/terminalManager";
+import { useT, t as _t } from "../stores/i18nStore";
 import type { ChannelOutput } from "../types";
 
 export function ServerList() {
@@ -17,6 +18,7 @@ export function ServerList() {
   const addTab = useTerminalStore((s) => s.addTab);
   const setChannel = useTerminalStore((s) => s.setChannel);
   const enterServers = useUIStore((s) => s.enterServers);
+  const t = useT();
 
   useEffect(() => {
     checkMasterPassword().then(() => {
@@ -37,11 +39,11 @@ export function ServerList() {
     if (!server) return;
 
     if (!masterPasswordSet) {
-      toast("Master password required", { variant: "warning" });
+      toast(_t("toast.masterPasswordRequired"), { variant: "warning" });
       return;
     }
 
-    toast("Connecting...", { description: `Establishing SSH session to ${server.host}`, variant: "default" });
+    toast(_t("toast.connecting"), { description: _t("toast.establishingSshTo", { host: server.host }), variant: "default" });
 
     try {
       const tabId = crypto.randomUUID();
@@ -70,9 +72,9 @@ export function ServerList() {
 
       enterServers();
 
-      toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
+      toast(_t("toast.sessionInitiated"), { description: _t("toast.connectingToHost", { host: server.host }), variant: "default" });
     } catch (err) {
-      toast("Connection failed", { description: String(err), variant: "error" });
+      toast(_t("toast.connectionFailed"), { description: String(err), variant: "error" });
     }
   };
 
@@ -81,11 +83,11 @@ export function ServerList() {
   return (
     <div className="server-list">
       <div className="section-header">
-        <span className="section-title">Servers</span>
+        <span className="section-title">{t("serverList.title")}</span>
         <button
           className="btn-icon"
           onClick={() => showServerModal("add")}
-          title="Add server"
+          title={t("serverList.addServer")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path
@@ -100,12 +102,12 @@ export function ServerList() {
 
       {serverEntries.length === 0 && (
         <div className="empty-list">
-          <p>No servers configured</p>
+          <p>{t("serverList.empty")}</p>
           <button
             className="btn btn--sm btn--primary"
             onClick={() => showServerModal("add")}
           >
-            Add your first server
+            {t("serverList.emptyHint")}
           </button>
         </div>
       )}
@@ -117,7 +119,7 @@ export function ServerList() {
               className="server-connect"
               onClick={() => handleConnect(id)}
               disabled={!masterPasswordSet}
-              title={`Connect to ${server.host}`}
+              title={t("serverList.connectTo", { host: server.host })}
             >
               <span className="server-icon">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -136,7 +138,7 @@ export function ServerList() {
             <button
               className="btn-icon btn-icon--sm"
               onClick={() => showServerModal("edit", server)}
-              title="Edit server"
+              title={t("serverList.edit")}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path
@@ -152,7 +154,7 @@ export function ServerList() {
             <button
               className="btn-icon btn-icon--sm btn-icon--danger"
               onClick={() => handleDelete(id)}
-              title="Delete server"
+              title={t("serverList.delete")}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path

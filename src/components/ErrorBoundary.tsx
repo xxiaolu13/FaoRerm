@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
+import { t } from "../stores/i18nStore";
 
 interface Props {
   children: ReactNode;
@@ -7,11 +8,15 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  copied?: boolean;
 }
 
 /**
  * 全局错误边界：捕获任何子树渲染期/ effect 期的未处理错误，
  * 避免整屏白屏，并显示可复制的错误信息便于定位。
+ *
+ * 注：class 组件无法使用 useT hook，改用非响应式 t() 函数。
+ * 语言切换时若已渲染错误页，需用户手动刷新；可接受。
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false };
@@ -25,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = () => {
-    this.setState({ hasError: false, error: undefined });
+    this.setState({ hasError: false, error: undefined, copied: false });
     // 强制刷新以确保状态一致
     if (typeof window !== "undefined") window.location.reload();
   };
@@ -36,6 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
     const text = `${error.name}: ${error.message}\n${error.stack ?? ""}`;
     try {
       await navigator.clipboard.writeText(text);
+      this.setState({ copied: true });
     } catch {
       /* ignore */
     }
@@ -61,10 +67,10 @@ export class ErrorBoundary extends Component<Props, State> {
       >
         <div style={{ maxWidth: 640, width: "100%" }}>
           <h2 style={{ marginTop: 0, color: "#f38ba8" }}>
-            应用渲染时发生致命错误
+            {t("errorBoundary.title")}
           </h2>
           <p style={{ color: "#a0a0a0", fontSize: 13 }}>
-            已被 ErrorBoundary 捕获，避免整屏白屏。请将下方错误信息反馈给开发者后重载。
+            {t("errorBoundary.desc")}
           </p>
           <pre
             style={{
@@ -97,7 +103,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 fontSize: 13,
               }}
             >
-              复制错误信息
+              {this.state.copied ? t("errorBoundary.copied") : t("errorBoundary.copyError")}
             </button>
             <button
               onClick={this.handleReload}
@@ -112,7 +118,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 fontWeight: 600,
               }}
             >
-              重载应用
+              {t("errorBoundary.retry")}
             </button>
           </div>
         </div>

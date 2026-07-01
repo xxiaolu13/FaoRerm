@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { useUIStore } from "../stores/uiStore";
 import { terminalManager } from "../terminal/terminalManager";
 import { toast } from "../stores/toastStore";
+import { useT } from "../stores/i18nStore";
 
 interface MenuItem {
   key: string;
@@ -16,6 +17,7 @@ interface MenuItem {
 function TerminalContextMenuImpl() {
   const menu = useUIStore((s) => s.terminalContextMenu);
   const hide = useUIStore((s) => s.hideTerminalContextMenu);
+  const t = useT();
 
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -81,7 +83,7 @@ function TerminalContextMenuImpl() {
   const items: MenuItem[] = [
     {
       key: "copy",
-      label: "Copy",
+      label: t("contextMenu.copy"),
       disabled: !hasSelection,
       icon: (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -96,7 +98,7 @@ function TerminalContextMenuImpl() {
     },
     {
       key: "paste",
-      label: "Paste",
+      label: t("contextMenu.paste"),
       icon: (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.2" />
@@ -110,7 +112,7 @@ function TerminalContextMenuImpl() {
     },
     {
       key: "select-all",
-      label: "Select All",
+      label: t("contextMenu.selectAll"),
       icon: (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <rect x="2.5" y="2.5" width="9" height="9" rx="1" stroke="currentColor" strokeWidth="1.2" />
@@ -125,7 +127,7 @@ function TerminalContextMenuImpl() {
     },
     {
       key: "clear",
-      label: "Clear Screen",
+      label: t("contextMenu.clear"),
       icon: (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M3 4h8M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M4 4l1 7a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1l1-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -134,12 +136,12 @@ function TerminalContextMenuImpl() {
       onClick: () =>
         run(() => {
           session?.clear();
-          toast("Screen cleared", { variant: "default", duration: 1500 });
+          toast(t("contextMenu.cleared"), { variant: "default", duration: 1500 });
         }),
     },
     {
       key: "reset",
-      label: "Reset Terminal",
+      label: t("contextMenu.reset"),
       danger: true,
       icon: (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -149,7 +151,7 @@ function TerminalContextMenuImpl() {
       onClick: () =>
         run(() => {
           session?.reset();
-          toast("Terminal reset", { variant: "warning", duration: 1500 });
+          toast(t("contextMenu.resetDone"), { variant: "warning", duration: 1500 });
         }),
     },
   ];

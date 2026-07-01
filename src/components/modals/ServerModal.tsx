@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useUIStore } from "../../stores/uiStore";
 import { useServerStore } from "../../stores/serverStore";
+import { useT } from "../../stores/i18nStore";
 import type { ServerConfig } from "../../types";
 
 const DEFAULT_SERVER: Partial<ServerConfig> = {
@@ -21,6 +22,7 @@ export function ServerModal() {
   const hideServerModal = useUIStore((s) => s.hideServerModal);
   const addServer = useServerStore((s) => s.addServer);
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
+  const t = useT();
 
   const isEdit = modal?.mode === "edit";
   const [form, setForm] = useState<Partial<ServerConfig>>(DEFAULT_SERVER);
@@ -45,11 +47,11 @@ export function ServerModal() {
 
   const handleSubmit = async () => {
     if (!serverKey.trim()) {
-      setError("Server name is required");
+      setError(t("serverModal.serverNameRequired"));
       return;
     }
     if (!form.host?.trim()) {
-      setError("Host is required");
+      setError(t("serverModal.hostRequired"));
       return;
     }
 
@@ -74,23 +76,23 @@ export function ServerModal() {
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">
-            {isEdit ? "Edit Server" : "Add Server"}
+            {isEdit ? t("serverModal.titleEdit") : t("serverModal.titleAdd")}
           </h2>
         </div>
 
         <div className="modal-body">
           {!masterPasswordSet && (
             <div className="alert alert--warning">
-              Master password is not set. Unlock the app before adding servers.
+              {t("serverModal.masterNotSet")}
             </div>
           )}
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Server Name</label>
+              <label className="form-label">{t("serverModal.serverName")}</label>
               <input
                 className="input"
-                placeholder="e.g., production-web"
+                placeholder={t("serverModal.serverNamePlaceholder")}
                 value={serverKey}
                 onChange={(e) => setServerKey(e.target.value)}
                 disabled={isEdit}
@@ -100,16 +102,16 @@ export function ServerModal() {
 
           <div className="form-row form-row--3">
             <div className="form-group form-group--grow">
-              <label className="form-label">Host</label>
+              <label className="form-label">{t("serverModal.host")}</label>
               <input
                 className="input"
-                placeholder="192.168.1.1"
+                placeholder={t("serverModal.hostPlaceholder")}
                 value={form.host || ""}
                 onChange={(e) => update("host", e.target.value)}
               />
             </div>
             <div className="form-group form-group--fixed">
-              <label className="form-label">Port</label>
+              <label className="form-label">{t("serverModal.port")}</label>
               <input
                 className="input"
                 type="number"
@@ -118,7 +120,7 @@ export function ServerModal() {
               />
             </div>
             <div className="form-group form-group--fixed">
-              <label className="form-label">Username</label>
+              <label className="form-label">{t("serverModal.username")}</label>
               <input
                 className="input"
                 placeholder="root"
@@ -130,7 +132,7 @@ export function ServerModal() {
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Auth Method</label>
+              <label className="form-label">{t("serverModal.authMethod")}</label>
               <div className="toggle-group">
                 <button
                   className={`toggle-btn ${
@@ -138,7 +140,7 @@ export function ServerModal() {
                   }`}
                   onClick={() => update("method", "password")}
                 >
-                  Password
+                  {t("serverModal.password")}
                 </button>
                 <button
                   className={`toggle-btn ${
@@ -146,7 +148,7 @@ export function ServerModal() {
                   }`}
                   onClick={() => update("method", "key")}
                 >
-                  Private Key
+                  {t("serverModal.privateKey")}
                 </button>
               </div>
             </div>
@@ -156,16 +158,16 @@ export function ServerModal() {
             <div className="form-group">
               <label className="form-label">
                 {form.method === "password"
-                  ? "Password"
-                  : "Private Key Path"}
+                  ? t("serverModal.password")
+                  : t("serverModal.privateKeyPath")}
               </label>
               <input
                 className="input"
                 type={form.method === "password" ? "password" : "text"}
                 placeholder={
                   form.method === "password"
-                    ? "Enter password"
-                    : "/home/user/.ssh/id_ed25519"
+                    ? t("serverModal.passwordPlaceholder")
+                    : t("serverModal.privateKeyPathPlaceholder")
                 }
                 value={form.password || ""}
                 onChange={(e) => update("password", e.target.value)}
@@ -174,10 +176,10 @@ export function ServerModal() {
           </div>
 
           <details className="form-details">
-            <summary className="form-details-summary">Advanced Options</summary>
+            <summary className="form-details-summary">{t("serverModal.advancedOptions")}</summary>
             <div className="form-row form-row--3">
               <div className="form-group">
-                <label className="form-label">Inactivity Timeout (s)</label>
+                <label className="form-label">{t("serverModal.inactivityTimeout")}</label>
                 <input
                   className="input"
                   type="number"
@@ -191,7 +193,7 @@ export function ServerModal() {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Keepalive Interval (s)</label>
+                <label className="form-label">{t("serverModal.keepaliveInterval")}</label>
                 <input
                   className="input"
                   type="number"
@@ -213,7 +215,7 @@ export function ServerModal() {
                       update("allow_insecure_algos", e.target.checked)
                     }
                   />
-                  <span>Allow Insecure Algorithms</span>
+                  <span>{t("serverModal.allowInsecureAlgos")}</span>
                 </label>
               </div>
             </div>
@@ -224,14 +226,14 @@ export function ServerModal() {
 
         <div className="modal-footer">
           <button className="btn btn--ghost" onClick={hideServerModal}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             className="btn btn--primary"
             onClick={handleSubmit}
             disabled={saving || !masterPasswordSet}
           >
-            {saving ? "Saving..." : isEdit ? "Update" : "Add Server"}
+            {saving ? t("serverModal.saving") : isEdit ? t("serverModal.update") : t("serverModal.addServerBtn")}
           </button>
         </div>
       </div>

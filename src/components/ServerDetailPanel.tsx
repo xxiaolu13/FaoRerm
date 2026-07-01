@@ -5,6 +5,7 @@ import { useTerminalStore } from "../stores/terminalStore";
 import { useUIStore } from "../stores/uiStore";
 import { toast } from "../stores/toastStore";
 import { terminalManager } from "../terminal/terminalManager";
+import { useT, t as _t } from "../stores/i18nStore";
 import type { ChannelOutput } from "../types";
 
 export function ServerDetailPanel() {
@@ -17,6 +18,7 @@ export function ServerDetailPanel() {
   const tabs = useTerminalStore((s) => s.tabs);
   const tabOrder = useTerminalStore((s) => s.tabOrder);
   const setSelectedServerId = useUIStore((s) => s.setSelectedServerId);
+  const t = useT();
 
   const [connecting, setConnecting] = useState(false);
 
@@ -32,12 +34,12 @@ export function ServerDetailPanel() {
 
   const handleConnect = async () => {
     if (!masterPasswordSet) {
-      toast("Master password required", { variant: "warning" });
+      toast(_t("toast.masterPasswordRequired"), { variant: "warning" });
       return;
     }
 
     setConnecting(true);
-    toast("Connecting...", { description: `Establishing SSH session to ${server.host}`, variant: "default" });
+    toast(_t("toast.connecting"), { description: _t("toast.establishingSshTo", { host: server.host }), variant: "default" });
 
     try {
       const tabId = crypto.randomUUID();
@@ -64,9 +66,9 @@ export function ServerDetailPanel() {
         status: "connecting",
       });
 
-      toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
+      toast(_t("toast.sessionInitiated"), { description: _t("toast.connectingToHost", { host: server.host }), variant: "default" });
     } catch (err) {
-      toast("Connection failed", { description: String(err), variant: "error" });
+      toast(_t("toast.connectionFailed"), { description: String(err), variant: "error" });
     } finally {
       setConnecting(false);
     }
@@ -91,8 +93,8 @@ export function ServerDetailPanel() {
       terminalManager.setChannelId(newTabId, channelId);
 
       const shellCount = tabOrder.filter((tid) => {
-        const t = tabs.get(tid);
-        return t?.sessionId === tab.sessionId;
+        const tItem = tabs.get(tid);
+        return tItem?.sessionId === tab.sessionId;
       }).length + 1;
 
       addTab({
@@ -105,9 +107,9 @@ export function ServerDetailPanel() {
         status: "connecting",
       });
 
-      toast("New shell opened", { description: `Shell #${shellCount} on ${server.host}`, variant: "success" });
+      toast(_t("toast.newShellOpened"), { description: _t("toast.shellNOnHost", { host: server.host, n: shellCount }), variant: "success" });
     } catch (err) {
-      toast("Failed to open shell", { description: String(err), variant: "error" });
+      toast(_t("toast.failedToOpenShell"), { description: String(err), variant: "error" });
     }
   };
 
@@ -118,7 +120,7 @@ export function ServerDetailPanel() {
           <button
             className="btn-icon"
             onClick={() => setSelectedServerId(null)}
-            title="Back to dashboard"
+            title={t("serverDetail.back")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -129,7 +131,7 @@ export function ServerDetailPanel() {
         <button
           className="btn-icon"
           onClick={() => showServerModal("edit", server)}
-          title="Edit server"
+          title={t("serverDetail.edit")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M12 2L14 4L5 13L2 14L3 11L12 2Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
@@ -140,34 +142,34 @@ export function ServerDetailPanel() {
       <div className="server-detail-body">
         <div className="server-detail-grid">
           <div className="server-detail-field">
-            <span className="server-detail-label">Host</span>
+            <span className="server-detail-label">{t("serverDetail.host")}</span>
             <code className="server-detail-value">{server.host}</code>
           </div>
           <div className="server-detail-field">
-            <span className="server-detail-label">Port</span>
+            <span className="server-detail-label">{t("serverDetail.port")}</span>
             <code className="server-detail-value">{server.port}</code>
           </div>
           <div className="server-detail-field">
-            <span className="server-detail-label">User</span>
+            <span className="server-detail-label">{t("serverDetail.user")}</span>
             <code className="server-detail-value">{server.user}</code>
           </div>
           <div className="server-detail-field">
-            <span className="server-detail-label">Auth</span>
+            <span className="server-detail-label">{t("serverDetail.auth")}</span>
             <code className="server-detail-value">{server.method}</code>
           </div>
           <div className="server-detail-field">
-            <span className="server-detail-label">Insecure Algos</span>
-            <code className="server-detail-value">{server.allow_insecure_algos ? "Yes" : "No"}</code>
+            <span className="server-detail-label">{t("serverDetail.insecureAlgos")}</span>
+            <code className="server-detail-value">{server.allow_insecure_algos ? t("serverDetail.yes") : t("serverDetail.no")}</code>
           </div>
           {server.inactivity_timeout != null && (
             <div className="server-detail-field">
-              <span className="server-detail-label">Inactivity Timeout</span>
+              <span className="server-detail-label">{t("serverDetail.inactivityTimeout")}</span>
               <code className="server-detail-value">{server.inactivity_timeout}s</code>
             </div>
           )}
           {server.keepalive_interval != null && (
             <div className="server-detail-field">
-              <span className="server-detail-label">Keepalive</span>
+              <span className="server-detail-label">{t("serverDetail.keepalive")}</span>
               <code className="server-detail-value">{server.keepalive_interval}s</code>
             </div>
           )}
@@ -184,14 +186,14 @@ export function ServerDetailPanel() {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="spinner">
                   <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="28" strokeLinecap="round" />
                 </svg>
-                Connecting...
+                {t("serverDetail.connecting")}
               </>
             ) : (
               <>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M2 2L12 7L2 12V2Z" fill="currentColor" />
                 </svg>
-                Connect
+                {t("serverDetail.connect")}
               </>
             )}
           </button>
@@ -204,7 +206,7 @@ export function ServerDetailPanel() {
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2V12M2 7H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
-              Open New Shell
+              {t("serverDetail.openNewShell")}
             </button>
           )}
         </div>

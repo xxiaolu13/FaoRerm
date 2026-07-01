@@ -2,11 +2,13 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useUIStore } from "../../stores/uiStore";
 import { useTerminalStore } from "../../stores/terminalStore";
+import { useT } from "../../stores/i18nStore";
 
 export function KeyboardAuthModal() {
   const modal = useUIStore((s) => s.keyboardAuthModal);
   const hideKeyboardAuthModal = useUIStore((s) => s.hideKeyboardAuthModal);
   const removeTab = useTerminalStore((s) => s.removeTab);
+  const t = useT();
   const [response, setResponse] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -50,14 +52,14 @@ export function KeyboardAuthModal() {
               <circle cx="12" cy="8" r="1" fill="currentColor" />
             </svg>
           </div>
-          <h2 className="modal-title">Authentication Required</h2>
+          <h2 className="modal-title">{t("keyboardAuth.title")}</h2>
           <p className="modal-desc modal-desc--prompt">{modal.prompt}</p>
         </div>
 
         <div className="modal-body">
           <div className="form-group">
             <label className="form-label" htmlFor="kb-auth-input">
-              Response
+              {t("keyboardAuth.response")}
             </label>
             <input
               id="kb-auth-input"
@@ -69,21 +71,21 @@ export function KeyboardAuthModal() {
                 if (e.key === "Enter" && response) handleSubmit();
               }}
               autoFocus
-              placeholder={isPassword ? "Enter password..." : "Enter response..."}
+              placeholder={isPassword ? t("keyboardAuth.placeholderPassword") : t("keyboardAuth.placeholderResponse")}
             />
           </div>
         </div>
 
         <div className="modal-footer">
           <button className="btn btn--ghost" onClick={handleCancel}>
-            Cancel
+            {t("keyboardAuth.cancel")}
           </button>
           <button
             className="btn btn--primary"
             onClick={handleSubmit}
             disabled={loading || !response}
           >
-            {loading ? "Sending..." : "Submit"}
+            {loading ? t("keyboardAuth.sending") : t("keyboardAuth.submit")}
           </button>
         </div>
       </div>

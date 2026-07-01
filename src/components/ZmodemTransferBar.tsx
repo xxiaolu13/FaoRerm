@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "../stores/toastStore";
+import { useT, t as _t } from "../stores/i18nStore";
 import { useEffect, useRef } from "react";
 import type { ZmodemStartEvent } from "../types";
 
@@ -17,12 +18,13 @@ function formatSize(bytes: number): string {
 function ZmodemTransferItem({ channelId }: { channelId: string }) {
   const transfer = useUIStore((s) => s.zmodemTransfers.get(channelId));
   const removeZmodemTransfer = useUIStore((s) => s.removeZmodemTransfer);
+  const t = useT();
 
   if (!transfer) return null;
 
   const pct = transfer.total > 0 ? Math.round((transfer.transferred / transfer.total) * 100) : 0;
   const isUpload = transfer.direction === "upload";
-  const label = isUpload ? "Uploading" : "Downloading";
+  const label = isUpload ? t("zmodem.uploading") : t("zmodem.downloading");
 
   const handleCancel = async () => {
     try {
@@ -53,7 +55,7 @@ function ZmodemTransferItem({ channelId }: { channelId: string }) {
             {formatSize(transfer.transferred)} / {formatSize(transfer.total)}
           </span>
         )}
-        <button className="zmodem-bar-cancel" onClick={handleCancel} title="Cancel transfer">
+        <button className="zmodem-bar-cancel" onClick={handleCancel} title={t("zmodem.cancelTransfer")}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
@@ -118,7 +120,7 @@ export function ZmodemEventHandler() {
           try {
             const selected = await open({
               multiple: true,
-              title: "Select files to upload",
+              title: _t("zmodem.selectFiles"),
             });
             if (selected && selected.length > 0) {
               const paths = Array.isArray(selected) ? selected.map(String) : [String(selected)];
@@ -157,7 +159,7 @@ export function ZmodemEventHandler() {
 
           try {
             const selected = await save({
-              title: "Save downloaded file",
+              title: _t("zmodem.saveFile"),
               defaultPath: filename,
             });
             if (selected) {
@@ -189,7 +191,6 @@ export function ZmodemEventHandler() {
         const transfer = useUIStore.getState().zmodemTransfers.get(channel_id);
         const filename = transfer?.filename || "";
         const isUpload = direction === "upload";
-        const label = isUpload ? "上传" : "下载";
 
         updateZmodemTransfer(channel_id, { active: false });
         setTimeout(() => {
@@ -199,9 +200,29 @@ export function ZmodemEventHandler() {
         downloadPendingRef.current.delete(channel_id);
 
         if (success) {
-          toast(`${label}完成`, { description: filename ? `${filename} ${label}成功` : `${label}成功`, variant: "success" });
+          if (isUpload) {
+            toast(_t("zmodem.uploadComplete"), {
+              description: filename ? _t("zmodem.fileUploadSuccess", { filename }) : _t("zmodem.uploadComplete"),
+              variant: "success",
+            });
+          } else {
+            toast(_t("zmodem.downloadComplete"), {
+              description: filename ? _t("zmodem.fileDownloadSuccess", { filename }) : _t("zmodem.downloadComplete"),
+              variant: "success",
+            });
+          }
         } else {
-          toast(`${label}失败`, { description: filename ? `${filename} ${label}失败` : `${label}失败`, variant: "error" });
+          if (isUpload) {
+            toast(_t("zmodem.uploadFailed"), {
+              description: filename ? _t("zmodem.fileUploadFailed", { filename }) : _t("zmodem.uploadFailed"),
+              variant: "error",
+            });
+          } else {
+            toast(_t("zmodem.downloadFailed"), {
+              description: filename ? _t("zmodem.fileDownloadFailed", { filename }) : _t("zmodem.downloadFailed"),
+              variant: "error",
+            });
+          }
         }
       });
 

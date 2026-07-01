@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useUIStore } from "../../stores/uiStore";
 import { useTerminalStore } from "../../stores/terminalStore";
+import { useT } from "../../stores/i18nStore";
 
 export function HostKeyModal() {
   const modal = useUIStore((s) => s.hostKeyModal);
   const hideHostKeyModal = useUIStore((s) => s.hideHostKeyModal);
   const removeTab = useTerminalStore((s) => s.removeTab);
+  const t = useT();
 
   if (!modal) return null;
 
@@ -60,21 +62,18 @@ export function HostKeyModal() {
               <circle cx="12" cy="17" r="1" fill="currentColor" />
             </svg>
           </div>
-          <h2 className="modal-title">Host Key Verification</h2>
-          <p className="modal-desc">
-            The server's host key is not recognized. Verify the fingerprint
-            before continuing.
-          </p>
+          <h2 className="modal-title">{t("hostKey.title")}</h2>
+          <p className="modal-desc">{t("hostKey.desc")}</p>
         </div>
 
         <div className="modal-body">
           <div className="key-info">
             <div className="key-info-row">
-              <span className="key-info-label">Key Type</span>
+              <span className="key-info-label">{t("hostKey.keyType")}</span>
               <code className="key-info-value">{modal.keyType}</code>
             </div>
             <div className="key-info-row">
-              <span className="key-info-label">Fingerprint</span>
+              <span className="key-info-label">{t("hostKey.fingerprint")}</span>
               <code className="key-info-value key-fingerprint">
                 {modal.fingerprint}
               </code>
@@ -84,10 +83,10 @@ export function HostKeyModal() {
 
         <div className="modal-footer">
           <button className="btn btn--danger" onClick={handleDeny}>
-            Deny
+            {t("hostKey.deny")}
           </button>
           <button className="btn btn--primary" onClick={handleAccept}>
-            Accept &amp; Trust
+            {t("hostKey.accept")}
           </button>
         </div>
       </div>

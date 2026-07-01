@@ -32,6 +32,7 @@ import { BlacklistModal } from "./components/modals/BlacklistModal";
 import { ZmodemTransferBar, ZmodemEventHandler } from "./components/ZmodemTransferBar";
 import { toast } from "./stores/toastStore";
 import { terminalManager } from "./terminal/terminalManager";
+import { useT, t as _t } from "./stores/i18nStore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./App.css";
@@ -41,6 +42,7 @@ function ActivityBar() {
   const setActiveSection = useUIStore((s) => s.setActiveSection);
   const activateLockScreen = useUIStore((s) => s.activateLockScreen);
   const masterPasswordSet = useServerStore((s) => s.masterPasswordSet);
+  const t = useT();
 
   return (
     <div className="activity-bar">
@@ -48,7 +50,7 @@ function ActivityBar() {
         <button
           className={`activity-bar-btn ${activeSection === "servers" ? "activity-bar-btn--active" : ""}`}
           onClick={() => setActiveSection("servers")}
-          title="Servers"
+          title={t("activityBar.servers")}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <rect x="3" y="4" width="14" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
@@ -60,7 +62,7 @@ function ActivityBar() {
         <button
           className={`activity-bar-btn ${activeSection === "management" ? "activity-bar-btn--active" : ""}`}
           onClick={() => setActiveSection("management")}
-          title="Management"
+          title={t("activityBar.management")}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
@@ -75,7 +77,7 @@ function ActivityBar() {
           <button
             className="activity-bar-btn"
             onClick={activateLockScreen}
-            title="Lock App"
+            title={t("activityBar.lockApp")}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <rect x="5" y="9" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
@@ -91,12 +93,13 @@ function ActivityBar() {
 function RightDrawerToggle() {
   const rightDrawerOpen = useUIStore((s) => s.rightDrawerOpen);
   const toggleRightDrawer = useUIStore((s) => s.toggleRightDrawer);
+  const t = useT();
 
   return (
     <button
       className="right-drawer-toggle"
       onClick={toggleRightDrawer}
-      title={rightDrawerOpen ? "Close panel (Ctrl+Shift+P)" : "Quick Commands (Ctrl+Shift+P)"}
+      title={rightDrawerOpen ? t("rightDrawer.closePanel") : t("rightDrawer.quickCommandsTitle")}
     >
       {rightDrawerOpen ? (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -130,6 +133,7 @@ function RightDrawer() {
   const confirmDecision = useAIStore((s) => s.confirmDecision);
   const clearMessages = useAIStore((s) => s.clearMessages);
   const [input, setInput] = useState("");
+  const t = useT();
 
   const loading = convLoading;
 
@@ -171,7 +175,7 @@ function RightDrawer() {
         <div
           className="right-drawer-resize-handle"
           onMouseDown={onResizeStart}
-          title="Drag to resize"
+          title={t("rightDrawer.dragToResize")}
         />
       )}
       <div
@@ -184,13 +188,13 @@ function RightDrawer() {
               className={`right-drawer-tab ${activeTab === "commands" ? "right-drawer-tab--active" : ""}`}
               onClick={() => setActiveTab("commands")}
             >
-              Commands
+              {t("rightDrawer.commands")}
             </button>
             <button
               className={`right-drawer-tab ${activeTab === "ai" ? "right-drawer-tab--active" : ""}`}
               onClick={() => setActiveTab("ai")}
             >
-              AI
+              {t("rightDrawer.ai")}
             </button>
           </div>
         </div>
@@ -201,10 +205,10 @@ function RightDrawer() {
               {confirmRequest && (
                 <div className="ai-confirm-bar">
                   <div className="ai-confirm-header">
-                    <span className="ai-confirm-badge">Permission Required</span>
+                    <span className="ai-confirm-badge">{t("ai.permissionRequired")}</span>
                     <span className="ai-confirm-tool">{confirmRequest.tool}</span>
                     {confirmQueueLen > 0 && (
-                      <span className="ai-confirm-queue-hint">+{confirmQueueLen} pending</span>
+                      <span className="ai-confirm-queue-hint">{t("ai.plusN", { n: confirmQueueLen })}</span>
                     )}
                   </div>
                   {confirmRequest.description && (
@@ -218,13 +222,13 @@ function RightDrawer() {
                       className="btn btn--sm btn--primary"
                       onClick={() => confirmDecision(confirmRequest.requestId, true)}
                     >
-                      Allow
+                      {t("ai.allow")}
                     </button>
                     <button
                       className="btn btn--sm btn--danger"
                       onClick={() => confirmDecision(confirmRequest.requestId, false)}
                     >
-                      Deny
+                      {t("ai.deny")}
                     </button>
                   </div>
                 </div>
@@ -236,27 +240,27 @@ function RightDrawer() {
                       <path d="M12 2a8 8 0 0 1 8 8c0 3.4-2.1 6.3-5 7.5V20a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2.5C6.1 16.3 4 13.4 4 10a8 8 0 0 1 8-8z" />
                       <path d="M9 22h6" />
                     </svg>
-                    <span className="ai-empty-title">No conversation yet</span>
-                    <span className="ai-empty-hint">Ask about your terminal session, request commands, or debug output.</span>
+                    <span className="ai-empty-title">{t("ai.noConversationTitle")}</span>
+                    <span className="ai-empty-hint">{t("ai.noConversationHint")}</span>
                   </div>
                 )}
                 {(convMessages || []).map((msg) => (
                   <div key={msg.id} className={`ai-message ai-message--${msg.role}`}>
                     <div className="ai-message-header">
-                      <span className="ai-message-role">{msg.role === "user" ? "You" : "AI"}</span>
+                      <span className="ai-message-role">{msg.role === "user" ? t("ai.you") : t("ai.assistant")}</span>
                       {msg.role === "assistant" && msg.status === "streaming" && (
                         <span className="ai-message-status">
                           <span className="ai-pulse" />
-                          {msg.toolCalls.some(tc => tc.status === "running") ? "Executing" : "Thinking"}
+                          {msg.toolCalls.some(tc => tc.status === "running") ? t("ai.executing") : t("ai.thinking")}
                         </span>
                       )}
                       {msg.role === "assistant" && msg.status === "error" && (
-                        <span className="ai-message-status ai-message-status--error">Error</span>
+                        <span className="ai-message-status ai-message-status--error">{t("ai.errorStatus")}</span>
                       )}
                     </div>
                     {msg.thinking && (
                       <details className="ai-thinking">
-                        <summary>Thinking...</summary>
+                        <summary>{t("ai.thinkingLabel")}</summary>
                         <pre className="ai-thinking-content">{msg.thinking}</pre>
                       </details>
                     )}
@@ -269,17 +273,17 @@ function RightDrawer() {
                               <span className={`ai-tool-call-status ai-tool-call-status--${tc.status}`}>
                                 <span className="ai-tool-call-dot" />
                                 <span className="ai-tool-call-status-label">
-                                  {tc.status === "running" && "running"}
-                                  {tc.status === "done" && "done"}
-                                  {tc.status === "error" && "error"}
+                                  {tc.status === "running" && t("ai.statusRunning")}
+                                  {tc.status === "done" && t("ai.statusDone")}
+                                  {tc.status === "error" && t("ai.statusError")}
                                 </span>
-                                {tc.durationMs != null && <span className="ai-tool-call-duration">{tc.durationMs}ms</span>}
+                                {tc.durationMs != null && <span className="ai-tool-call-duration">{t("ai.durationMs", { n: tc.durationMs })}</span>}
                               </span>
                             </div>
                             <code className="ai-tool-call-input">{formatToolInput(tc.name, tc.input)}</code>
                             {tc.result && (
                               <details className="ai-tool-call-result">
-                                <summary>Output</summary>
+                                <summary>{t("ai.output")}</summary>
                                 <pre>{truncate(tc.result, 500)}</pre>
                               </details>
                             )}
@@ -309,7 +313,7 @@ function RightDrawer() {
                       handleAsk();
                     }
                   }}
-                  placeholder={activeSession ? "Ask AI..." : "No active terminal"}
+                  placeholder={activeSession ? t("ai.placeholder") : t("ai.noActiveTerminal")}
                   disabled={!activeSession}
                 />
                 {loading ? (
@@ -317,7 +321,7 @@ function RightDrawer() {
                     className="btn btn--danger btn--sm"
                     onClick={handleCancel}
                   >
-                    Stop
+                    {t("ai.stop")}
                   </button>
                 ) : (
                   <button
@@ -325,14 +329,14 @@ function RightDrawer() {
                     onClick={handleAsk}
                     disabled={!activeSession || !input.trim()}
                   >
-                    Send
+                    {t("ai.send")}
                   </button>
                 )}
                 {(convMessages || []).length > 0 && !loading && (
                   <button
                     className="btn btn--sm"
                     onClick={() => clearMessages(channelId)}
-                    title="Clear conversation"
+                    title={t("ai.clear")}
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <path d="M2 3H10M5 3V2H7V3M3 3V10H9V3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
@@ -371,6 +375,7 @@ function TerminalArea() {
   const activeTabId = useTerminalStore((s) => s.activeTabId);
   const activeSection = useUIStore((s) => s.activeSection);
   const servers = useServerStore((s) => s.servers);
+  const t = useT();
 
   const isServersSection = activeSection === "servers";
 
@@ -400,14 +405,14 @@ function TerminalArea() {
         <div className="dashboard">
           <div className="dashboard-hero">
             <img className="dashboard-logo" src="/logo.png" alt="FaoRerm" />
-            <h2 className="dashboard-title">Welcome to FaoRerm</h2>
+            <h2 className="dashboard-title">{t("dashboard.welcome")}</h2>
             <p className="dashboard-desc">
-              Connect to a server to start a remote terminal session.
+              {t("dashboard.welcomeDesc")}
             </p>
           </div>
           {Object.entries(servers).length > 0 && (
             <div className="dashboard-servers">
-              <h3 className="dashboard-section-title">Quick Connect</h3>
+              <h3 className="dashboard-section-title">{t("dashboard.quickConnect")}</h3>
               <div className="dashboard-server-grid">
                 {Object.entries(servers).slice(0, 6).map(([id, server]) => (
                   <ServerCard key={id} id={id} server={server} />
@@ -416,19 +421,19 @@ function TerminalArea() {
             </div>
           )}
           <div className="dashboard-shortcuts">
-            <h3 className="dashboard-section-title">Keyboard Shortcuts</h3>
+            <h3 className="dashboard-section-title">{t("dashboard.keyboardShortcuts")}</h3>
             <div className="shortcut-list">
               <div className="shortcut-item">
                 <kbd className="shortcut-key">Ctrl+Shift+K</kbd>
-                <span className="shortcut-desc">Clear terminal (keep history)</span>
+                <span className="shortcut-desc">{t("dashboard.clearTerminal")}</span>
               </div>
               <div className="shortcut-item">
                 <kbd className="shortcut-key">Ctrl+Shift+P</kbd>
-                <span className="shortcut-desc">Toggle command panel</span>
+                <span className="shortcut-desc">{t("dashboard.togglePanel")}</span>
               </div>
               <div className="shortcut-item">
                 <kbd className="shortcut-key">Ctrl+Shift+C</kbd>
-                <span className="shortcut-desc">Copy from terminal</span>
+                <span className="shortcut-desc">{t("dashboard.copyFromTerminal")}</span>
               </div>
             </div>
           </div>
@@ -446,11 +451,11 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
 
   const handleClick = async () => {
     if (!masterPasswordSet) {
-      toast("Master password required", { variant: "warning" });
+      toast(_t("toast.masterPasswordRequired"), { variant: "warning" });
       return;
     }
 
-    toast("Connecting...", { description: `Establishing SSH session to ${server.host}`, variant: "default" });
+    toast(_t("toast.connecting"), { description: _t("toast.establishingSshTo", { host: server.host }), variant: "default" });
 
     try {
       const tabId = crypto.randomUUID();
@@ -479,9 +484,9 @@ function ServerCard({ id, server }: { id: string; server: import("./types").Serv
 
       enterServers();
 
-      toast("Session initiated", { description: `Connecting to ${server.host}...`, variant: "default" });
+      toast(_t("toast.sessionInitiated"), { description: _t("toast.connectingToHost", { host: server.host }), variant: "default" });
     } catch (err) {
-      toast("Connection failed", { description: String(err), variant: "error" });
+      toast(_t("toast.connectionFailed"), { description: String(err), variant: "error" });
     }
   };
 
